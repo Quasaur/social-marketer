@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Label: Unique identifier for this job -->
+    <key>Label</key>
+    <string>com.wisdombook.SocialMarketer</string>
+    
+    <!-- Program: Path to the executable (will be set dynamically on install) -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Social Marketer.app/Contents/MacOS/SocialMarketer</string>
+        <string>--scheduled-post</string>
+    </array>
+    
+    <!-- Schedule: Run daily at 9:00 AM (earliest posting time) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    
+    <!-- Run at load (for testing/immediate execution) -->
+    <key>RunAtLoad</key>
+    <false/>
+    
+    <!-- Keep alive: Don't restart if it exits -->
+    <key>KeepAlive</key>
+    <false/>
+    
+    <!-- Standard output/error logging -->
+    <key>StandardOutPath</key>
+    <string>/tmp/com.wisdombook.SocialMarketer.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/com.wisdombook.SocialMarketer.err.log</string>
+    
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/tmp</string>
+    
+    <!-- Process type: Background -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <!-- Nice: Lower priority -->
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>
