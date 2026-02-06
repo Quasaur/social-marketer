@@ -42,7 +42,7 @@ struct ContentView: View {
             case "queue":
                 QueueView()
             case "platforms":
-                PlatformsView()
+                PlatformSettingsView()
             case "settings":
                 SettingsView()
             default:

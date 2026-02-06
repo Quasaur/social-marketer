@@ -31,8 +31,8 @@ struct PlatformCredentials: Codable {
     var twitter: TwitterCredentials?
     var instagram: InstagramCredentials?
     var linkedin: LinkedInCredentials?
-    var youtube: YouTubeCredentials?
-    var substack: SubstackCredentials?
+    var facebook: FacebookCredentials?
+    var pinterest: PinterestCredentials?
     
     struct TwitterCredentials: Codable {
         let apiKey: String
@@ -51,15 +51,14 @@ struct PlatformCredentials: Codable {
         let personURN: String
     }
     
-    struct YouTubeCredentials: Codable {
+    struct FacebookCredentials: Codable {
         let accessToken: String
-        let channelID: String
+        let pageID: String
     }
     
-    struct SubstackCredentials: Codable {
-        let email: String
-        let password: String
-        let publicationSlug: String
+    struct PinterestCredentials: Codable {
+        let accessToken: String
+        let boardID: String
     }
 }
 
@@ -162,17 +161,17 @@ final class LinkedInConnector: PlatformConnector {
     }
 }
 
-// MARK: - YouTube Connector
+// MARK: - Facebook Connector
 
-final class YouTubeConnector: PlatformConnector {
-    let platformName = "YouTube"
-    private var credentials: PlatformCredentials.YouTubeCredentials?
+final class FacebookConnector: PlatformConnector {
+    let platformName = "Facebook"
+    private var credentials: PlatformCredentials.FacebookCredentials?
     
     var isConfigured: Bool {
         get async { credentials != nil }
     }
     
-    func configure(credentials: PlatformCredentials.YouTubeCredentials) {
+    func configure(credentials: PlatformCredentials.FacebookCredentials) {
         self.credentials = credentials
     }
     
@@ -187,23 +186,25 @@ final class YouTubeConnector: PlatformConnector {
             throw PlatformError.notConfigured
         }
         
-        // YouTube Data API - Community Posts
+        // Facebook Graph API - Page Photo Post
+        // POST /{page-id}/photos with image and message
+        let fullCaption = "\(caption)\n\n🔗 \(link.absoluteString)"
         
         return PostResult(success: false, postID: nil, postURL: nil, error: PlatformError.notImplemented)
     }
 }
 
-// MARK: - Substack Connector
+// MARK: - Pinterest Connector
 
-final class SubstackConnector: PlatformConnector {
-    let platformName = "Substack"
-    private var credentials: PlatformCredentials.SubstackCredentials?
+final class PinterestConnector: PlatformConnector {
+    let platformName = "Pinterest"
+    private var credentials: PlatformCredentials.PinterestCredentials?
     
     var isConfigured: Bool {
         get async { credentials != nil }
     }
     
-    func configure(credentials: PlatformCredentials.SubstackCredentials) {
+    func configure(credentials: PlatformCredentials.PinterestCredentials) {
         self.credentials = credentials
     }
     
@@ -218,7 +219,8 @@ final class SubstackConnector: PlatformConnector {
             throw PlatformError.notConfigured
         }
         
-        // Substack Notes API (or automation)
+        // Pinterest API v5 - Create Pin
+        // POST /v5/pins with image, title, description, and link
         
         return PostResult(success: false, postID: nil, postURL: nil, error: PlatformError.notImplemented)
     }
