@@ -17,6 +17,8 @@ struct ContentView: View {
                 Section("Overview") {
                     Label("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent")
                         .tag("dashboard")
+                    Label("Content", systemImage: "doc.text")
+                        .tag("content")
                 }
                 
                 Section("Configuration") {
@@ -33,6 +35,8 @@ struct ContentView: View {
             switch selectedTab {
             case "dashboard":
                 DashboardView()
+            case "content":
+                ContentBrowserView()
             case "platforms":
                 PlatformsView()
             case "settings":

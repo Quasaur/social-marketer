@@ -30,4 +30,16 @@
         <relationship name="platform" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Platform" inverseName="posts" inverseEntity="Platform"/>
         <relationship name="post" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Post" inverseName="logs" inverseEntity="Post"/>
     </entity>
+    <entity name="CachedWisdomEntry" representedClassName="CachedWisdomEntry" syncable="YES">
+        <attribute name="category" optional="YES" attributeType="String"/>
+        <attribute name="content" optional="YES" attributeType="String"/>
+        <attribute name="fetchedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastUsedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="linkString" optional="YES" attributeType="String"/>
+        <attribute name="pubDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="reference" optional="YES" attributeType="String"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <attribute name="usedCount" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
 </model>
