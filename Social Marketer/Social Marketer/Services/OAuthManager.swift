@@ -33,53 +33,116 @@ final class OAuthManager: NSObject, ObservableObject {
     // MARK: - OAuth Configurations
     
     struct OAuthConfig {
-        let clientID: String
-        let clientSecret: String?
+        let platformID: String
+        var clientID: String
+        var clientSecret: String?
         let authURL: URL
         let tokenURL: URL
         let redirectURI: String
         let scopes: [String]
         let usePKCE: Bool
         
-        static let twitter = OAuthConfig(
-            clientID: "", // Set via environment or settings
-            clientSecret: nil,
-            authURL: URL(string: "https://twitter.com/i/oauth2/authorize")!,
-            tokenURL: URL(string: "https://api.twitter.com/2/oauth2/token")!,
-            redirectURI: "socialmarketer://oauth/callback",
-            scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
-            usePKCE: true
-        )
+        static func twitter(clientID: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "twitter",
+                clientID: clientID,
+                clientSecret: nil,
+                authURL: URL(string: "https://twitter.com/i/oauth2/authorize")!,
+                tokenURL: URL(string: "https://api.twitter.com/2/oauth2/token")!,
+                redirectURI: "socialmarketer://oauth/callback",
+                scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+                usePKCE: true
+            )
+        }
         
-        static let linkedin = OAuthConfig(
-            clientID: "",
-            clientSecret: "",
-            authURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
-            tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
-            redirectURI: "socialmarketer://oauth/callback",
-            scopes: ["w_member_social", "openid", "profile"],
-            usePKCE: false
-        )
+        static func linkedin(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "linkedin",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
+                tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
+                redirectURI: "socialmarketer://oauth/callback",
+                scopes: ["w_member_social", "openid", "profile"],
+                usePKCE: false
+            )
+        }
         
-        static let facebook = OAuthConfig(
-            clientID: "",
-            clientSecret: "",
-            authURL: URL(string: "https://www.facebook.com/v19.0/dialog/oauth")!,
-            tokenURL: URL(string: "https://graph.facebook.com/v19.0/oauth/access_token")!,
-            redirectURI: "socialmarketer://oauth/callback",
-            scopes: ["pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"],
-            usePKCE: false
-        )
+        static func facebook(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "facebook",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://www.facebook.com/v19.0/dialog/oauth")!,
+                tokenURL: URL(string: "https://graph.facebook.com/v19.0/oauth/access_token")!,
+                redirectURI: "socialmarketer://oauth/callback",
+                scopes: ["pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"],
+                usePKCE: false
+            )
+        }
         
-        static let pinterest = OAuthConfig(
-            clientID: "",
-            clientSecret: "",
-            authURL: URL(string: "https://www.pinterest.com/oauth/")!,
-            tokenURL: URL(string: "https://api.pinterest.com/v5/oauth/token")!,
-            redirectURI: "socialmarketer://oauth/callback",
-            scopes: ["boards:read", "pins:write"],
-            usePKCE: false
-        )
+        static func pinterest(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "pinterest",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://www.pinterest.com/oauth/")!,
+                tokenURL: URL(string: "https://api.pinterest.com/v5/oauth/token")!,
+                redirectURI: "socialmarketer://oauth/callback",
+                scopes: ["boards:read", "pins:write"],
+                usePKCE: false
+            )
+        }
+    }
+    
+    // MARK: - API Credentials (stored in Keychain)
+    
+    struct APICredentials: Codable {
+        let clientID: String
+        let clientSecret: String?
+    }
+    
+    /// Save API credentials for a platform
+    func saveAPICredentials(_ creds: APICredentials, for platform: String) throws {
+        try KeychainService.shared.save(creds, for: "api_creds_\(platform)")
+        logger.info("API credentials saved for \(platform)")
+    }
+    
+    /// Get API credentials for a platform
+    func getAPICredentials(for platform: String) throws -> APICredentials {
+        return try KeychainService.shared.retrieve(APICredentials.self, for: "api_creds_\(platform)")
+    }
+    
+    /// Check if API credentials exist for a platform
+    func hasAPICredentials(for platform: String) -> Bool {
+        return (try? getAPICredentials(for: platform)) != nil
+    }
+    
+    /// Build OAuth config for a platform using stored credentials
+    func getConfig(for platform: String) throws -> OAuthConfig {
+        let creds = try getAPICredentials(for: platform)
+        
+        switch platform {
+        case "twitter":
+            return .twitter(clientID: creds.clientID)
+        case "linkedin":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("LinkedIn requires Client Secret")
+            }
+            return .linkedin(clientID: creds.clientID, clientSecret: secret)
+        case "facebook":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("Facebook requires App Secret")
+            }
+            return .facebook(clientID: creds.clientID, clientSecret: secret)
+        case "pinterest":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("Pinterest requires App Secret")
+            }
+            return .pinterest(clientID: creds.clientID, clientSecret: secret)
+        default:
+            throw OAuthError.missingCredentials("Unknown platform: \(platform)")
+        }
     }
     
     // MARK: - Token Storage

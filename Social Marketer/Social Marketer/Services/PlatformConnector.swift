@@ -98,9 +98,10 @@ final class TwitterConnector: PlatformConnector {
     }
     
     func authenticate() async throws {
+        let config = try OAuthManager.shared.getConfig(for: "twitter")
         let tokens = try await OAuthManager.shared.authenticate(
             platform: "twitter",
-            config: .twitter
+            config: config
         )
         try OAuthManager.shared.saveTokens(tokens, for: "twitter")
         accessToken = tokens.accessToken
@@ -227,9 +228,10 @@ final class InstagramConnector: PlatformConnector {
     
     func authenticate() async throws {
         // Instagram uses Facebook OAuth
+        let config = try OAuthManager.shared.getConfig(for: "facebook")
         let tokens = try await OAuthManager.shared.authenticate(
             platform: "facebook",
-            config: .facebook
+            config: config
         )
         try OAuthManager.shared.saveTokens(tokens, for: "facebook")
         accessToken = tokens.accessToken
@@ -348,9 +350,10 @@ final class LinkedInConnector: PlatformConnector {
     }
     
     func authenticate() async throws {
+        let config = try OAuthManager.shared.getConfig(for: "linkedin")
         let tokens = try await OAuthManager.shared.authenticate(
             platform: "linkedin",
-            config: .linkedin
+            config: config
         )
         try OAuthManager.shared.saveTokens(tokens, for: "linkedin")
         accessToken = tokens.accessToken
@@ -527,9 +530,10 @@ final class FacebookConnector: PlatformConnector {
     }
     
     func authenticate() async throws {
+        let config = try OAuthManager.shared.getConfig(for: "facebook")
         let tokens = try await OAuthManager.shared.authenticate(
             platform: "facebook",
-            config: .facebook
+            config: config
         )
         try OAuthManager.shared.saveTokens(tokens, for: "facebook")
         accessToken = tokens.accessToken
@@ -627,9 +631,10 @@ final class PinterestConnector: PlatformConnector {
     }
     
     func authenticate() async throws {
+        let config = try OAuthManager.shared.getConfig(for: "pinterest")
         let tokens = try await OAuthManager.shared.authenticate(
             platform: "pinterest",
-            config: .pinterest
+            config: config
         )
         try OAuthManager.shared.saveTokens(tokens, for: "pinterest")
         accessToken = tokens.accessToken
