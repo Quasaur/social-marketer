@@ -218,6 +218,7 @@ struct ContentEntryRow: View {
 struct ContentDetailSheet: View {
     let entry: CachedWisdomEntry
     @Environment(\.dismiss) private var dismiss
+    @State private var showingGraphicPreview = false
     
     var body: some View {
         NavigationStack {
@@ -291,9 +292,19 @@ struct ContentDetailSheet: View {
             }
             .navigationTitle("Entry Details")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingGraphicPreview = true
+                    } label: {
+                        Label("Generate Graphic", systemImage: "photo.artframe")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showingGraphicPreview) {
+                GraphicPreviewView(entry: entry)
             }
         }
         .frame(minWidth: 400, minHeight: 400)

@@ -9,7 +9,7 @@ import AppKit
 import CoreGraphics
 
 /// Border template styles for quote graphics
-enum BorderTemplate: String, CaseIterable {
+enum BorderTemplate: String, CaseIterable, Identifiable {
     case artDeco = "art_deco"
     case greekLaurel = "greek_laurel"
     case sacredGeometry = "sacred_geometry"
@@ -20,6 +20,8 @@ enum BorderTemplate: String, CaseIterable {
     case islamicGeometric = "islamic_geometric"
     case stainedGlass = "stained_glass"
     case modernGlow = "modern_glow"
+    
+    var id: String { rawValue }
     
     /// Display name
     var displayName: String {
@@ -34,6 +36,22 @@ enum BorderTemplate: String, CaseIterable {
         case .islamicGeometric: return "Islamic Geometric"
         case .stainedGlass: return "Stained Glass"
         case .modernGlow: return "Modern Glow"
+        }
+    }
+    
+    /// Actual filename in Resources/Borders
+    var filename: String {
+        switch self {
+        case .artDeco: return "template_01_art_deco_1770307365733"
+        case .greekLaurel: return "template_02_greek_laurel_1770307380099"
+        case .sacredGeometry: return "template_03_sacred_geometry_1770307394997"
+        case .celticKnot: return "template_04_celtic_knot_1770307423874"
+        case .minimalist: return "template_05_minimalist_1770307439021"
+        case .baroque: return "template_06_baroque_1770307454492"
+        case .victorian: return "template_07_victorian_1770307484325"
+        case .islamicGeometric: return "template_08_islamic_1770307499223"
+        case .stainedGlass: return "template_09_stained_glass_1770307514480"
+        case .modernGlow: return "template_10_modern_glow_1770307534790"
         }
     }
     
@@ -58,6 +76,16 @@ final class QuoteGraphicGenerator {
     
     /// Generate a quote graphic from a wisdom entry
     func generate(from entry: WisdomEntry, template: BorderTemplate = .random) -> NSImage? {
+        return generateImage(title: entry.title, content: entry.content, reference: entry.reference, template: template)
+    }
+    
+    /// Generate a quote graphic from a cached wisdom entry
+    func generate(from entry: CachedWisdomEntry, template: BorderTemplate = .random) -> NSImage? {
+        return generateImage(title: entry.title ?? "Wisdom", content: entry.content ?? "", reference: entry.reference, template: template)
+    }
+    
+    /// Core image generation logic
+    private func generateImage(title: String, content: String, reference: String?, template: BorderTemplate) -> NSImage? {
         let image = NSImage(size: imageSize)
         
         image.lockFocus()
@@ -66,17 +94,17 @@ final class QuoteGraphicGenerator {
         backgroundColor.setFill()
         NSRect(origin: .zero, size: imageSize).fill()
         
-        // Draw border (placeholder - will use actual border assets)
+        // Draw border
         drawBorder(template: template)
         
         // Draw title
-        drawTitle(entry.title)
+        drawTitle(title)
         
         // Draw content
-        drawContent(entry.content)
+        drawContent(content)
         
         // Draw reference if exists
-        if let reference = entry.reference {
+        if let reference = reference {
             drawReference(reference)
         }
         
@@ -105,8 +133,9 @@ final class QuoteGraphicGenerator {
     // MARK: - Private Drawing Methods
     
     private func drawBorder(template: BorderTemplate) {
-        // Try to load border asset
-        if let borderImage = NSImage(named: template.rawValue) {
+        // Load border image from bundle Resources/Borders
+        if let bundlePath = Bundle.main.path(forResource: template.filename, ofType: "png", inDirectory: "Borders"),
+           let borderImage = NSImage(contentsOfFile: bundlePath) {
             borderImage.draw(in: NSRect(origin: .zero, size: imageSize))
         } else {
             // Fallback: draw simple gold border
