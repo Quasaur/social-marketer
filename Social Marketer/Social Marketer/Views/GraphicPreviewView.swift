@@ -11,11 +11,15 @@ import AppKit
 struct GraphicPreviewView: View {
     let entry: CachedWisdomEntry
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
     
     @State private var selectedTemplate: BorderTemplate = .artDeco
     @State private var generatedImage: NSImage? = nil
     @State private var isSaving = false
     @State private var showingSaveSuccess = false
+    @State private var showingQueueSheet = false
+    @State private var scheduledDate = Date()
+    @State private var showingQueueSuccess = false
     
     private let generator = QuoteGraphicGenerator()
     
@@ -76,8 +80,14 @@ struct GraphicPreviewView: View {
                             Label("Save to Desktop", systemImage: "square.and.arrow.down")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .disabled(generatedImage == nil || isSaving)
+                    
+                    Button(action: { showingQueueSheet = true }) {
+                        Label("Add to Queue", systemImage: "tray.and.arrow.up")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(generatedImage == nil)
                 }
                 .padding(.bottom)
             }
@@ -92,6 +102,17 @@ struct GraphicPreviewView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("Quote graphic saved to Desktop.")
+            }
+            .alert("Queued!", isPresented: $showingQueueSuccess) {
+                Button("OK", role: .cancel) { dismiss() }
+            } message: {
+                Text("Post scheduled for \(scheduledDate.formatted(date: .abbreviated, time: .shortened)).")
+            }
+            .sheet(isPresented: $showingQueueSheet) {
+                QueueScheduleSheet(
+                    scheduledDate: $scheduledDate,
+                    onConfirm: addToQueue
+                )
             }
         }
         .frame(minWidth: 600, minHeight: 700)
@@ -129,6 +150,34 @@ struct GraphicPreviewView: View {
             }
         }
     }
+    
+    private func addToQueue() {
+        guard let image = generatedImage, let entryLink = entry.link else { return }
+        
+        Task {
+            do {
+                // Save image to app support directory
+                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                let queueDir = appSupport.appendingPathComponent("SocialMarketer/Queue", isDirectory: true)
+                try FileManager.default.createDirectory(at: queueDir, withIntermediateDirectories: true)
+                
+                let filename = "queued_\(Date().timeIntervalSince1970).png"
+                let imageURL = queueDir.appendingPathComponent(filename)
+                try generator.save(image, to: imageURL)
+                
+                // Create Post entity
+                await MainActor.run {
+                    let post = Post(context: viewContext, content: entry.content ?? "", imageURL: imageURL, link: entryLink)
+                    post.scheduledDate = scheduledDate
+                    entry.markAsUsed()
+                    PersistenceController.shared.save()
+                    showingQueueSuccess = true
+                }
+            } catch {
+                // Handle error silently for now
+            }
+        }
+    }
 }
 
 // MARK: - Template Button
@@ -161,6 +210,49 @@ struct TemplateButton: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Queue Schedule Sheet
+
+struct QueueScheduleSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var scheduledDate: Date
+    let onConfirm: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Schedule Post")
+                .font(.headline)
+            
+            Text("Choose when to post this wisdom quote.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            DatePicker(
+                "Post Date",
+                selection: $scheduledDate,
+                in: Date()...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .datePickerStyle(.graphical)
+            .frame(maxHeight: 300)
+            
+            HStack(spacing: 16) {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                
+                Button("Add to Queue") {
+                    dismiss()
+                    onConfirm()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 350)
     }
 }
 

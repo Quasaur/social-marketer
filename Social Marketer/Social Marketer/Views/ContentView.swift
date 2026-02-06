@@ -19,6 +19,8 @@ struct ContentView: View {
                         .tag("dashboard")
                     Label("Content", systemImage: "doc.text")
                         .tag("content")
+                    Label("Queue", systemImage: "tray.and.arrow.up")
+                        .tag("queue")
                 }
                 
                 Section("Configuration") {
@@ -37,6 +39,8 @@ struct ContentView: View {
                 DashboardView()
             case "content":
                 ContentBrowserView()
+            case "queue":
+                QueueView()
             case "platforms":
                 PlatformsView()
             case "settings":
