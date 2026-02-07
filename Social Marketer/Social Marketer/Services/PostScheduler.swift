@@ -6,10 +6,12 @@
 //
 
 import Foundation
+import AppKit
 import os.log
 
 /// Manages scheduled posting across platforms
-actor PostScheduler {
+@MainActor
+final class PostScheduler {
     
     private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Scheduler")
     private var isRunning = false
@@ -35,8 +37,7 @@ actor PostScheduler {
         static let linkedin = DateComponents(hour: 10, minute: 0)
         static let facebook = DateComponents(hour: 13, minute: 0)
         static let instagram = DateComponents(hour: 18, minute: 0)
-        static let youtube = DateComponents(hour: 9, minute: 0)
-        static let substack = DateComponents(hour: 10, minute: 0)
+        static let pinterest = DateComponents(hour: 14, minute: 0)
     }
     
     // MARK: - launchd Management
@@ -142,8 +143,35 @@ actor PostScheduler {
     
     // MARK: - Private Methods
     
+    /// Map a Core Data Platform to its API connector
+    private func connectorFor(_ platform: Platform) -> PlatformConnector? {
+        guard let apiType = platform.apiType else { return nil }
+        
+        switch apiType {
+        case "twitter":
+            return TwitterConnector()
+        case "instagram":
+            return InstagramConnector()
+        case "linkedin":
+            return LinkedInConnector()
+        case "facebook":
+            return FacebookConnector()
+        case "pinterest":
+            return PinterestConnector()
+        default:
+            logger.warning("Unknown platform type: \(apiType)")
+            return nil
+        }
+    }
+    
     private func postToAllPlatforms(entry: WisdomEntry, imageURL: URL) async {
         let caption = buildCaption(from: entry)
+        
+        // Load image from saved URL
+        guard let image = NSImage(contentsOf: imageURL) else {
+            logger.error("Failed to load image from \(imageURL.path)")
+            return
+        }
         
         // Get enabled platforms from Core Data
         let context = PersistenceController.shared.viewContext
@@ -154,13 +182,159 @@ actor PostScheduler {
             return
         }
         
+        // Create a Post record
+        let post = Post(context: context, content: entry.content, imageURL: imageURL, link: entry.link)
+        post.scheduledDate = Date()
+        
+        var anySuccess = false
+        
         for platform in enabledPlatforms {
-            logger.info("Posting to \(platform.name ?? "Unknown")...")
+            let platformName = platform.name ?? "Unknown"
+            logger.info("Posting to \(platformName)...")
             
-            // Platform-specific posting will be implemented in Phase 3
-            // For now, log the intent
-            logger.info("Would post to \(platform.name ?? "Unknown"): \(caption.prefix(50))...")
+            guard let connector = connectorFor(platform) else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "No connector for \(platformName)")
+                post.addToLogs(log)
+                continue
+            }
+            
+            // Check for valid tokens
+            guard let apiType = platform.apiType,
+                  OAuthManager.shared.hasValidTokens(for: apiType) else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "Not authenticated — connect in Platforms settings")
+                post.addToLogs(log)
+                logger.warning("\(platformName) not authenticated, skipping")
+                continue
+            }
+            
+            do {
+                let result = try await connector.post(image: image, caption: caption, link: entry.link)
+                
+                if result.success {
+                    let log = PostLog(context: context, post: post, platform: platform, postID: result.postID, postURL: result.postURL)
+                    post.addToLogs(log)
+                    platform.lastPostDate = Date()
+                    anySuccess = true
+                    logger.info("✅ Posted to \(platformName): \(result.postID ?? "no ID")")
+                } else {
+                    let errorMsg = result.error?.localizedDescription ?? "Unknown error"
+                    let log = PostLog(context: context, post: post, platform: platform, error: errorMsg)
+                    post.addToLogs(log)
+                    logger.error("❌ Failed to post to \(platformName): \(errorMsg)")
+                }
+            } catch {
+                let log = PostLog(context: context, post: post, platform: platform, error: error.localizedDescription)
+                post.addToLogs(log)
+                logger.error("❌ Error posting to \(platformName): \(error.localizedDescription)")
+            }
         }
+        
+        // Update post status
+        post.postStatus = anySuccess ? .posted : .failed
+        post.postedDate = anySuccess ? Date() : nil
+        
+        PersistenceController.shared.save()
+        logger.info("Post results saved — \(anySuccess ? "at least one platform succeeded" : "all platforms failed")")
+    }
+    
+    // MARK: - Queue Processing
+    
+    /// Process all pending posts whose scheduled date has arrived
+    func processQueue() async {
+        let context = PersistenceController.shared.viewContext
+        let pendingPosts = Post.fetchPending(in: context)
+        
+        let now = Date()
+        let duePosts = pendingPosts.filter { post in
+            guard let scheduledDate = post.scheduledDate else { return false }
+            return scheduledDate <= now
+        }
+        
+        if duePosts.isEmpty {
+            logger.info("No due posts in queue")
+            return
+        }
+        
+        logger.info("Processing \(duePosts.count) due post(s)")
+        
+        let enabledPlatforms = Platform.fetchEnabled(in: context)
+        
+        guard !enabledPlatforms.isEmpty else {
+            logger.warning("No platforms enabled")
+            return
+        }
+        
+        for post in duePosts {
+            await postFromQueue(post, to: enabledPlatforms, in: context)
+        }
+    }
+    
+    /// Post a single queued post to all enabled platforms
+    private func postFromQueue(_ post: Post, to platforms: [Platform], in context: NSManagedObjectContext) async {
+        guard let content = post.content else {
+            logger.warning("Skipping post with no content")
+            post.postStatus = .failed
+            PersistenceController.shared.save()
+            return
+        }
+        
+        // Load image if available
+        var image: NSImage?
+        if let imageURL = post.imageURL {
+            image = NSImage(contentsOf: imageURL)
+        }
+        
+        let link = post.link ?? URL(string: "https://wisdombook.life")!
+        var anySuccess = false
+        
+        for platform in platforms {
+            let platformName = platform.name ?? "Unknown"
+            
+            guard let connector = connectorFor(platform) else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "No connector for \(platformName)")
+                post.addToLogs(log)
+                continue
+            }
+            
+            guard let apiType = platform.apiType,
+                  OAuthManager.shared.hasValidTokens(for: apiType) else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "Not authenticated")
+                post.addToLogs(log)
+                continue
+            }
+            
+            do {
+                // If we have an image, post with image. Otherwise post text-only.
+                if let img = image {
+                    let result = try await connector.post(image: img, caption: content, link: link)
+                    
+                    if result.success {
+                        let log = PostLog(context: context, post: post, platform: platform, postID: result.postID, postURL: result.postURL)
+                        post.addToLogs(log)
+                        platform.lastPostDate = Date()
+                        anySuccess = true
+                        logger.info("✅ Queue: Posted to \(platformName)")
+                    } else {
+                        let errorMsg = result.error?.localizedDescription ?? "Unknown error"
+                        let log = PostLog(context: context, post: post, platform: platform, error: errorMsg)
+                        post.addToLogs(log)
+                    }
+                } else {
+                    // No image — log as skipped for now
+                    let log = PostLog(context: context, post: post, platform: platform, error: "No image available for post")
+                    post.addToLogs(log)
+                    logger.warning("Skipped \(platformName) — no image")
+                }
+            } catch {
+                let log = PostLog(context: context, post: post, platform: platform, error: error.localizedDescription)
+                post.addToLogs(log)
+                logger.error("❌ Queue: Error posting to \(platformName): \(error.localizedDescription)")
+            }
+        }
+        
+        post.postStatus = anySuccess ? .posted : .failed
+        post.postedDate = anySuccess ? Date() : nil
+        PersistenceController.shared.save()
     }
     
     private func buildCaption(from entry: WisdomEntry) -> String {
