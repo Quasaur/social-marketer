@@ -64,7 +64,7 @@ final class OAuthManager: NSObject, ObservableObject {
                 authURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
                 tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
                 redirectURI: "http://localhost:8989/oauth/callback",
-                scopes: ["w_member_social"],
+                scopes: ["openid", "profile", "w_member_social"],
                 usePKCE: false
             )
         }
@@ -154,6 +154,7 @@ final class OAuthManager: NSObject, ObservableObject {
         let expiresAt: Date?
         let tokenType: String
         let scope: String?
+        let idToken: String?
         
         var isExpired: Bool {
             guard let expiresAt = expiresAt else { return false }
@@ -494,6 +495,11 @@ final class OAuthManager: NSObject, ObservableObject {
             queryItems.append(URLQueryItem(name: "code_challenge_method", value: "S256"))
         }
         
+        // Force re-consent for LinkedIn to ensure all scopes are granted
+        if config.redirectURI.starts(with: "http://localhost") {
+            queryItems.append(URLQueryItem(name: "prompt", value: "consent"))
+        }
+        
         components.queryItems = queryItems
         return components.url!
     }
@@ -544,6 +550,7 @@ final class OAuthManager: NSObject, ObservableObject {
             let expires_in: Int?
             let token_type: String?
             let scope: String?
+            let id_token: String?
         }
         
         let response = try JSONDecoder().decode(TokenResponse.self, from: data)
@@ -560,7 +567,8 @@ final class OAuthManager: NSObject, ObservableObject {
             refreshToken: response.refresh_token,
             expiresAt: expiresAt,
             tokenType: response.token_type ?? "Bearer",
-            scope: response.scope
+            scope: response.scope,
+            idToken: response.id_token
         )
     }
 }

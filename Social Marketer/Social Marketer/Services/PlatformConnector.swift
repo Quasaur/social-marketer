@@ -349,6 +349,37 @@ final class LinkedInConnector: PlatformConnector {
         self.personURN = personURN
     }
     
+    func setAccessToken(_ token: String) {
+        self.accessToken = token
+    }
+    
+    func setIdToken(_ idToken: String) {
+        // Decode JWT to extract sub claim (person ID)
+        if let personID = decodeJWTSub(idToken) {
+            self.personURN = "urn:li:person:\(personID)"
+            logger.info("Person URN from id_token: \(self.personURN ?? "nil")")
+        }
+    }
+    
+    private func decodeJWTSub(_ jwt: String) -> String? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        
+        // Decode the payload (second part)
+        var base64 = String(parts[1])
+        // Add padding if needed
+        while base64.count % 4 != 0 {
+            base64 += "="
+        }
+        
+        guard let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else { return nil }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sub = json["sub"] as? String else { return nil }
+        
+        return sub
+    }
+    
     func authenticate() async throws {
         let config = try OAuthManager.shared.getConfig(for: "linkedin")
         let tokens = try await OAuthManager.shared.authenticate(
@@ -358,23 +389,10 @@ final class LinkedInConnector: PlatformConnector {
         try OAuthManager.shared.saveTokens(tokens, for: "linkedin")
         accessToken = tokens.accessToken
         
-        // Fetch person URN
-        personURN = try await fetchPersonURN(token: tokens.accessToken)
-    }
-    
-    private func fetchPersonURN(token: String) async throws -> String {
-        let url = URL(string: "https://api.linkedin.com/v2/userinfo")!
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
-        
-        struct UserInfo: Decodable {
-            let sub: String
+        // Extract person URN from id_token JWT
+        if let idToken = tokens.idToken {
+            setIdToken(idToken)
         }
-        
-        let userInfo = try JSONDecoder().decode(UserInfo.self, from: data)
-        return "urn:li:person:\(userInfo.sub)"
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
@@ -500,6 +518,69 @@ final class LinkedInConnector: PlatformConnector {
         }
         
         throw PlatformError.postFailed("No post ID returned")
+    }
+    
+    /// Post text-only content (no image) to LinkedIn
+    func postText(_ text: String) async throws -> PostResult {
+        guard let token = accessToken, let urn = personURN else {
+            throw PlatformError.notConfigured
+        }
+        
+        let postID = try await createTextPost(text: text, personURN: urn, token: token)
+        
+        logger.info("LinkedIn text post created: \(postID)")
+        
+        return PostResult(
+            success: true,
+            postID: postID,
+            postURL: URL(string: "https://www.linkedin.com/feed/update/\(postID)"),
+            error: nil
+        )
+    }
+    
+    private func createTextPost(text: String, personURN: String, token: String) async throws -> String {
+        let url = URL(string: "https://api.linkedin.com/v2/posts")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2.0.0", forHTTPHeaderField: "LinkedIn-Version")
+        
+        let payload: [String: Any] = [
+            "author": personURN,
+            "commentary": text,
+            "visibility": "PUBLIC",
+            "distribution": [
+                "feedDistribution": "MAIN_FEED",
+                "targetEntities": [] as [[String: Any]],
+                "thirdPartyDistributionChannels": [] as [[String: Any]]
+            ],
+            "lifecycleState": "PUBLISHED",
+            "isReshareDisabledByAuthor": false
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PlatformError.postFailed("No HTTP response")
+        }
+        
+        guard httpResponse.statusCode == 201 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw PlatformError.postFailed("Post creation failed (\(httpResponse.statusCode)): \(errorBody)")
+        }
+        
+        // Post was created successfully (201)
+        if let postID = httpResponse.value(forHTTPHeaderField: "x-restli-id") {
+            return postID
+        }
+        
+        // Some LinkedIn API versions don't return the header, but post was still created
+        logger.info("Post created (201) but no x-restli-id header returned")
+        return "created"
     }
 }
 

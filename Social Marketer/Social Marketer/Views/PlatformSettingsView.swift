@@ -23,6 +23,11 @@ struct PlatformSettingsView: View {
     @State private var showingFilePicker = false
     private let googleIndexing = GoogleIndexingConnector()
     
+    // LinkedIn test state
+    @State private var linkedinTesting = false
+    @State private var showingSuccess = false
+    @State private var successMessage = ""
+    
     enum ConnectionState {
         case disconnected
         case connecting
@@ -80,7 +85,15 @@ struct PlatformSettingsView: View {
                             state: connectionStatus[platform.id] ?? .disconnected,
                             onSetup: { showCredentialsSheet(for: platform) },
                             onConnect: { await connectPlatform(platform) },
-                            onDisconnect: { disconnectPlatform(platform) }
+                            onDisconnect: { disconnectPlatform(platform) },
+                            extraButton: platform.id == "linkedin" && connectionStatus["linkedin"] == .connected ? AnyView(
+                                Button(linkedinTesting ? "Posting..." : "Test Post") {
+                                    Task { await testLinkedInPost() }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(linkedinTesting)
+                            ) : nil
                         )
                         Divider()
                             .padding(.leading, 60)
@@ -130,6 +143,11 @@ struct PlatformSettingsView: View {
             Button("OK") {}
         } message: {
             Text(errorMessage)
+        }
+        .alert("Success", isPresented: $showingSuccess) {
+            Button("OK") {}
+        } message: {
+            Text(successMessage)
         }
         .sheet(item: $selectedPlatform) { platform in
             CredentialsInputSheet(
@@ -232,6 +250,46 @@ struct PlatformSettingsView: View {
         }
     }
     
+    // MARK: - LinkedIn Test Post
+    
+    private func testLinkedInPost() async {
+        linkedinTesting = true
+        defer { linkedinTesting = false }
+        
+        let introText = """
+        Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.
+
+        In 2015 I published The Book of Tweets: Proverbs for the Modern Age on Amazon Kindle. In it I placed well over 600 proverbs, maxims and an adages.
+
+        Since that time I have posted another 300 adages on 19 social media platforms in an effort to communicate with the world the critical importance of Biblical Wisdom to our mental health, fortune and survival.
+
+        Now, in the latter days of my earthly journey, I am consolidating all of my work in a single Neo4j AURADB graph database which can be enjoyed by everyone free-of-charge through my new website The Book of Wisdom:
+
+        https://www.wisdombook.life
+        """
+        
+        do {
+            let connector = LinkedInConnector()
+            let tokens = try oauthManager.getTokens(for: "linkedin")
+            connector.setAccessToken(tokens.accessToken)
+            if let idToken = tokens.idToken {
+                connector.setIdToken(idToken)
+            } else {
+                errorMessage = "No id_token found. Please Disconnect and Connect LinkedIn again to get new tokens with openid scope."
+                showingError = true
+                return
+            }
+            let result = try await connector.postText(introText)
+            if result.success {
+                successMessage = "Posted to LinkedIn! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                showingSuccess = true
+            }
+        } catch {
+            errorMessage = "LinkedIn post failed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+    
     // MARK: - Google Search Console
     
     private func handleGSCKeyImport(_ result: Result<[URL], Error>) {
@@ -298,6 +356,7 @@ struct PlatformConnectionRow: View {
     let onSetup: () -> Void
     let onConnect: () async -> Void
     let onDisconnect: () -> Void
+    var extraButton: AnyView? = nil
     
     var body: some View {
         HStack(spacing: 16) {
@@ -349,8 +408,13 @@ struct PlatformConnectionRow: View {
                         .controlSize(.small)
                         .padding(.horizontal, 16)
                 case .connected:
-                    Button("Disconnect") { onDisconnect() }
-                        .buttonStyle(.bordered)
+                    HStack(spacing: 8) {
+                        if let extra = extraButton {
+                            extra
+                        }
+                        Button("Disconnect") { onDisconnect() }
+                            .buttonStyle(.bordered)
+                    }
                 }
             }
         }
