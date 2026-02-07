@@ -9,6 +9,7 @@ import Foundation
 import AuthenticationServices
 import CryptoKit
 import Combine
+import Network // Added Network import
 import os.log
 
 /// Manages OAuth 2.0 authentication flows for all platforms
@@ -62,8 +63,8 @@ final class OAuthManager: NSObject, ObservableObject {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
                 tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
-                redirectURI: "socialmarketer://oauth/callback",
-                scopes: ["w_member_social", "openid", "profile"],
+                redirectURI: "http://localhost:8989/oauth/callback",
+                scopes: ["w_member_social"],
                 usePKCE: false
             )
         }
@@ -210,7 +211,12 @@ final class OAuthManager: NSObject, ObservableObject {
         
         logger.info("Starting OAuth flow for \(platform)")
         
-        // Use ASWebAuthenticationSession for secure OAuth
+        // LinkedIn requires HTTP redirect — use localhost server flow
+        if config.redirectURI.starts(with: "http://localhost") {
+            return try await localhostAuthenticate(authURL: authURL, config: config)
+        }
+        
+        // Use ASWebAuthenticationSession for other platforms (custom URL scheme)
         return try await withCheckedThrowingContinuation { continuation in
             self.currentContinuation = continuation
             
@@ -249,6 +255,175 @@ final class OAuthManager: NSObject, ObservableObject {
             authSession?.prefersEphemeralWebBrowserSession = false
             authSession?.start()
         }
+    }
+    
+    // MARK: - Localhost OAuth Flow
+    
+    /// OAuth flow using a temporary local HTTP server (for platforms that require HTTP redirect URLs)
+    private func localhostAuthenticate(authURL: URL, config: OAuthConfig) async throws -> OAuthTokens {
+        // Parse port from redirect URI
+        guard let redirectComponents = URLComponents(string: config.redirectURI),
+              let port = redirectComponents.port else {
+            throw OAuthError.authenticationFailed("Invalid localhost redirect URI")
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            // Safety flag to prevent double-resume of continuation
+            var continuationResumed = false
+            
+            // Start a temporary TCP listener on the redirect port
+            let listener: NWListener
+            do {
+                let params = NWParameters.tcp
+                params.allowLocalEndpointReuse = true
+                listener = try NWListener(using: params, on: NWEndpoint.Port(integerLiteral: UInt16(port)))
+            } catch {
+                continuation.resume(throwing: OAuthError.authenticationFailed("Failed to start local server: \(error.localizedDescription)"))
+                return
+            }
+            
+            listener.newConnectionHandler = { [weak self] connection in
+                guard let self = self else { return }
+                
+                connection.start(queue: .main)
+                connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, _ in
+                    guard let data = data, let requestString = String(data: data, encoding: .utf8) else {
+                        connection.cancel()
+                        return
+                    }
+                    
+                    // Parse the HTTP request line
+                    // GET /oauth/callback?code=XXX&state=YYY HTTP/1.1
+                    guard let firstLine = requestString.components(separatedBy: "\r\n").first,
+                          let path = firstLine.components(separatedBy: " ").dropFirst().first else {
+                        connection.cancel()
+                        return
+                    }
+                    
+                    // Only process requests to the OAuth callback path — ignore favicon etc.
+                    guard path.hasPrefix("/oauth/callback") else {
+                        self.sendHTTPResponse(connection: connection, body: "")
+                        return
+                    }
+                    
+                    guard !continuationResumed else {
+                        connection.cancel()
+                        return
+                    }
+                    
+                    guard let callbackURL = URL(string: "http://localhost:\(port)\(path)") else {
+                        self.sendHTTPResponse(connection: connection, body: "Error: Could not parse callback.")
+                        listener.cancel()
+                        if !continuationResumed {
+                            continuationResumed = true
+                            continuation.resume(throwing: OAuthError.noCallback)
+                        }
+                        return
+                    }
+                    
+                    // Check for OAuth error in callback (LinkedIn sends errors this way)
+                    let callbackComponents = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
+                    if let error = callbackComponents?.queryItems?.first(where: { $0.name == "error" })?.value {
+                        let errorDesc = callbackComponents?.queryItems?.first(where: { $0.name == "error_description" })?.value ?? error
+                        self.logger.error("OAuth error from provider: \(error) - \(errorDesc)")
+                        self.sendHTTPResponse(connection: connection, body: """
+                            <html><body style="font-family:-apple-system,sans-serif;text-align:center;padding:60px;">
+                            <h1>❌ Authorization Failed</h1>
+                            <p>\(errorDesc)</p>
+                            <p style="color:#888;font-size:14px;">You can close this tab and try again in Social Marketer.</p>
+                            </body></html>
+                        """)
+                        listener.cancel()
+                        if !continuationResumed {
+                            continuationResumed = true
+                            continuation.resume(throwing: OAuthError.authenticationFailed(errorDesc))
+                        }
+                        return
+                    }
+                    
+                    // Verify code parameter exists before showing success
+                    guard callbackComponents?.queryItems?.first(where: { $0.name == "code" })?.value != nil else {
+                        self.sendHTTPResponse(connection: connection, body: """
+                            <html><body style="font-family:-apple-system,sans-serif;text-align:center;padding:60px;">
+                            <h1>❌ No Authorization Code</h1>
+                            <p>The provider did not return an authorization code.</p>
+                            </body></html>
+                        """)
+                        listener.cancel()
+                        if !continuationResumed {
+                            continuationResumed = true
+                            continuation.resume(throwing: OAuthError.noAuthorizationCode)
+                        }
+                        return
+                    }
+                    
+                    // Send a friendly success page to the browser
+                    self.sendHTTPResponse(connection: connection, body: """
+                        <html><body style="font-family:-apple-system,sans-serif;text-align:center;padding:60px;">
+                        <h1>✅ Connected!</h1>
+                        <p>You can close this tab and return to Social Marketer.</p>
+                        </body></html>
+                    """)
+                    
+                    // Stop the listener
+                    listener.cancel()
+                    
+                    // Exchange code for tokens
+                    Task {
+                        do {
+                            let tokens = try await self.exchangeCodeForTokens(callbackURL: callbackURL, config: config)
+                            if !continuationResumed {
+                                continuationResumed = true
+                                continuation.resume(returning: tokens)
+                            }
+                        } catch {
+                            if !continuationResumed {
+                                continuationResumed = true
+                                continuation.resume(throwing: error)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            listener.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    // Server is ready — open the browser
+                    self?.logger.info("Localhost OAuth server listening on port \(port)")
+                    NSWorkspace.shared.open(authURL)
+                case .failed(let error):
+                    self?.logger.error("Localhost server failed: \(error.localizedDescription)")
+                    if !continuationResumed {
+                        continuationResumed = true
+                        continuation.resume(throwing: OAuthError.authenticationFailed("Local server failed: \(error.localizedDescription)"))
+                    }
+                default:
+                    break
+                }
+            }
+            
+            listener.start(queue: .main)
+            
+            // Timeout after 5 minutes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 300) {
+                if listener.state == .ready {
+                    listener.cancel()
+                    if !continuationResumed {
+                        continuationResumed = true
+                        continuation.resume(throwing: OAuthError.authenticationFailed("OAuth timed out — no callback received"))
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Send an HTTP response and close the connection
+    private func sendHTTPResponse(connection: NWConnection, body: String) {
+        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n\(body)"
+        connection.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in
+            connection.cancel()
+        })
     }
     
     /// Refresh an expired token
@@ -367,7 +542,7 @@ final class OAuthManager: NSObject, ObservableObject {
             let access_token: String
             let refresh_token: String?
             let expires_in: Int?
-            let token_type: String
+            let token_type: String?
             let scope: String?
         }
         
@@ -384,7 +559,7 @@ final class OAuthManager: NSObject, ObservableObject {
             accessToken: response.access_token,
             refreshToken: response.refresh_token,
             expiresAt: expiresAt,
-            tokenType: response.token_type,
+            tokenType: response.token_type ?? "Bearer",
             scope: response.scope
         )
     }
@@ -430,9 +605,14 @@ enum OAuthError: Error, LocalizedError {
 
 private extension Dictionary where Key == String, Value == String {
     func percentEncoded() -> Data {
-        map { key, value in
-            let escapedKey = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
-            let escapedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
+        // Use strict RFC 3986 unreserved characters for form-urlencoded encoding
+        // This properly encodes +, /, =, etc. that appear in OAuth secrets
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        
+        return map { key, value in
+            let escapedKey = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
+            let escapedValue = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
             return "\(escapedKey)=\(escapedValue)"
         }
         .joined(separator: "&")

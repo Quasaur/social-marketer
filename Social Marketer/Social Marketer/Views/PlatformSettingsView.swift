@@ -14,7 +14,6 @@ struct PlatformSettingsView: View {
     @State private var credentialStatus: [String: Bool] = [:]
     @State private var showingError = false
     @State private var errorMessage = ""
-    @State private var showingCredentialsSheet = false
     @State private var selectedPlatform: PlatformInfo?
     
     // Google Search Console state
@@ -132,15 +131,13 @@ struct PlatformSettingsView: View {
         } message: {
             Text(errorMessage)
         }
-        .sheet(isPresented: $showingCredentialsSheet) {
-            if let platform = selectedPlatform {
-                CredentialsInputSheet(
-                    platform: platform,
-                    onSave: { clientID, clientSecret in
-                        saveCredentials(platform: platform, clientID: clientID, clientSecret: clientSecret)
-                    }
-                )
-            }
+        .sheet(item: $selectedPlatform) { platform in
+            CredentialsInputSheet(
+                platform: platform,
+                onSave: { clientID, clientSecret in
+                    saveCredentials(platform: platform, clientID: clientID, clientSecret: clientSecret)
+                }
+            )
         }
         .fileImporter(
             isPresented: $showingFilePicker,
@@ -177,12 +174,14 @@ struct PlatformSettingsView: View {
     
     private func showCredentialsSheet(for platform: PlatformInfo) {
         selectedPlatform = platform
-        showingCredentialsSheet = true
     }
     
     private func saveCredentials(platform: PlatformInfo, clientID: String, clientSecret: String?) {
         do {
-            let creds = OAuthManager.APICredentials(clientID: clientID, clientSecret: clientSecret)
+            let creds = OAuthManager.APICredentials(
+                clientID: clientID.trimmingCharacters(in: .whitespacesAndNewlines),
+                clientSecret: clientSecret?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
             try oauthManager.saveAPICredentials(creds, for: platform.id)
             credentialStatus[platform.id] = true
             
