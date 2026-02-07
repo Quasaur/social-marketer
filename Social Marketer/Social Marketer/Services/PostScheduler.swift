@@ -14,6 +14,7 @@ import os.log
 final class PostScheduler {
     
     private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Scheduler")
+    private let googleIndexing = GoogleIndexingConnector()
     private var isRunning = false
     
     // MARK: - launchd Configuration
@@ -131,7 +132,10 @@ final class PostScheduler {
             // 4. Post to all enabled platforms
             await postToAllPlatforms(entry: entry, imageURL: tempURL)
             
-            // 5. Cleanup
+            // 5. Ping Google Search Console
+            await pingGoogle(url: entry.link)
+            
+            // 6. Cleanup
             try? FileManager.default.removeItem(at: tempURL)
             
             logger.info("Scheduled posting complete")
@@ -335,6 +339,11 @@ final class PostScheduler {
         post.postStatus = anySuccess ? .posted : .failed
         post.postedDate = anySuccess ? Date() : nil
         PersistenceController.shared.save()
+        
+        // Ping Google if any platform succeeded
+        if anySuccess, let link = post.link {
+            await pingGoogle(url: link)
+        }
     }
     
     private func buildCaption(from entry: WisdomEntry) -> String {
@@ -348,6 +357,23 @@ final class PostScheduler {
         caption += "\n\n#wisdom #wisdombook #dailywisdom"
         
         return caption
+    }
+    
+    // MARK: - Google Search Console
+    
+    /// Ping Google's Indexing API to notify about a published URL
+    private func pingGoogle(url: URL) async {
+        guard googleIndexing.isConfigured else {
+            logger.info("Google Search Console not configured, skipping ping")
+            return
+        }
+        
+        do {
+            try await googleIndexing.notifyURLUpdated(url)
+            logger.info("✅ Google Search Console pinged: \(url.absoluteString)")
+        } catch {
+            logger.error("⚠️ Google ping failed (non-blocking): \(error.localizedDescription)")
+        }
     }
 }
 
