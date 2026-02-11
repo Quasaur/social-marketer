@@ -7,7 +7,6 @@
 
 import Foundation
 import Security
-import os.log
 
 /// Service for storing and retrieving platform credentials from Keychain
 final class KeychainService {
@@ -18,7 +17,7 @@ final class KeychainService {
     
     // MARK: - Properties
     
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Keychain")
+    private let logger = Log.keychain
     private let serviceIdentifier = "com.wisdombook.SocialMarketer"
     
     // MARK: - Public Methods

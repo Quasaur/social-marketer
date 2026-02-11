@@ -54,6 +54,7 @@ struct ContentBrowserView: View {
             // Category Filter
             Picker("Category", selection: $selectedCategory) {
                 Text("All").tag(nil as WisdomEntry.WisdomCategory?)
+                Text("Introduction").tag(WisdomEntry.WisdomCategory.introduction as WisdomEntry.WisdomCategory?)
                 Text("Thoughts").tag(WisdomEntry.WisdomCategory.thought as WisdomEntry.WisdomCategory?)
                 Text("Quotes").tag(WisdomEntry.WisdomCategory.quote as WisdomEntry.WisdomCategory?)
                 Text("Passages").tag(WisdomEntry.WisdomCategory.passage as WisdomEntry.WisdomCategory?)
@@ -209,6 +210,7 @@ struct ContentEntryRow: View {
         case .thought: return .blue
         case .quote: return .purple
         case .passage: return .orange
+        case .introduction: return .green
         }
     }
 }

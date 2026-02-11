@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct PlatformSettingsView: View {
     @StateObject private var oauthManager = OAuthManager.shared
@@ -16,12 +15,6 @@ struct PlatformSettingsView: View {
     @State private var errorMessage = ""
     @State private var selectedPlatform: PlatformInfo?
     
-    // Google Search Console state
-    @State private var gscConfigured = false
-    @State private var gscEmail: String?
-    @State private var gscTesting = false
-    @State private var showingFilePicker = false
-    private let googleIndexing = GoogleIndexingConnector()
     
     // LinkedIn test state
     @State private var linkedinTesting = false
@@ -40,6 +33,10 @@ struct PlatformSettingsView: View {
     
     // Pinterest test state
     @State private var pinterestTesting = false
+    
+    // Tier expansion state
+    @State private var tier2Expanded = false
+    @State private var tier3Expanded = false
     
     enum ConnectionState {
         case disconnected
@@ -73,14 +70,14 @@ struct PlatformSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Text("Connected Platforms")
+            Text("Social Media Platforms")
                 .font(.title2)
                 .fontWeight(.semibold)
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
                 .padding(.bottom, 8)
             
-            Text("Set up API credentials, then connect your accounts.")
+            Text("Connect your social media accounts for automated posting.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 20)
@@ -110,36 +107,36 @@ struct PlatformSettingsView: View {
             Divider()
                 .padding(.vertical, 8)
             
-            // Search Engines Section
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Search Engines")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-                
-                GoogleSearchConsoleRow(
-                    isConfigured: gscConfigured,
-                    email: gscEmail,
-                    isTesting: gscTesting,
-                    onImport: { showingFilePicker = true },
-                    onTest: { Task { await testGooglePing() } },
-                    onRemove: { removeGSCKey() }
-                )
+            // Tier 2 — API Available
+            ScrollView {
+                VStack(spacing: 16) {
+                    DisclosureGroup(isExpanded: $tier2Expanded) {
+                        ForEach(PlatformTier.apiAvailable, id: \.name) { item in
+                            FuturePlatformRow(name: item.name, icon: item.icon, note: item.note)
+                        }
+                    } label: {
+                        TierHeader(title: "API Available", icon: "antenna.radiowaves.left.and.right", color: .blue, count: nil, total: PlatformTier.apiAvailable.count)
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(12)
+                    
+                    // Tier 3 — The Rest
+                    DisclosureGroup(isExpanded: $tier3Expanded) {
+                        ForEach(PlatformTier.theRest, id: \.name) { item in
+                            FuturePlatformRow(name: item.name, icon: item.icon, note: item.note)
+                        }
+                    } label: {
+                        TierHeader(title: "The Rest", icon: "ellipsis.circle", color: .secondary, count: nil, total: PlatformTier.theRest.count)
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal)
             }
             
             Spacer()
-            
-            // Info Footer
-            HStack {
-                Image(systemName: "lock.shield")
-                    .foregroundColor(.green)
-                Text("All credentials are stored securely in your Mac's Keychain.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(20)
         }
         .frame(minWidth: 500, minHeight: 500)
         .onAppear {
@@ -176,13 +173,6 @@ struct PlatformSettingsView: View {
                 )
             }
         }
-        .fileImporter(
-            isPresented: $showingFilePicker,
-            allowedContentTypes: [.json],
-            allowsMultipleSelection: false
-        ) { result in
-            handleGSCKeyImport(result)
-        }
     }
     
     private func loadStates() {
@@ -202,10 +192,6 @@ struct PlatformSettingsView: View {
                 }
             }
         }
-        
-        // Google Search Console
-        gscConfigured = googleIndexing.isConfigured
-        gscEmail = googleIndexing.serviceAccountEmail
     }
     
     private func extraButton(for platform: PlatformInfo) -> AnyView? {
@@ -545,62 +531,6 @@ struct PlatformSettingsView: View {
             showingError = true
         }
     }
-    
-    // MARK: - Google Search Console
-    
-    private func handleGSCKeyImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            
-            // Need security-scoped access for sandboxed apps
-            guard url.startAccessingSecurityScopedResource() else {
-                errorMessage = "Cannot access the selected file"
-                showingError = true
-                return
-            }
-            defer { url.stopAccessingSecurityScopedResource() }
-            
-            do {
-                try googleIndexing.importServiceAccountKey(from: url)
-                gscConfigured = true
-                gscEmail = googleIndexing.serviceAccountEmail
-            } catch {
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
-            
-        case .failure(let error):
-            errorMessage = error.localizedDescription
-            showingError = true
-        }
-    }
-    
-    private func testGooglePing() async {
-        gscTesting = true
-        defer { gscTesting = false }
-        
-        do {
-            let testURL = URL(string: "https://wisdombook.life")!
-            try await googleIndexing.notifyURLUpdated(testURL)
-            errorMessage = "✅ Test ping sent successfully to Google for wisdombook.life"
-            showingError = true
-        } catch {
-            errorMessage = "Test ping failed: \(error.localizedDescription)"
-            showingError = true
-        }
-    }
-    
-    private func removeGSCKey() {
-        do {
-            try googleIndexing.removeServiceAccountKey()
-            gscConfigured = false
-            gscEmail = nil
-        } catch {
-            errorMessage = error.localizedDescription
-            showingError = true
-        }
-    }
 }
 
 // MARK: - Platform Row
@@ -822,76 +752,6 @@ struct TwitterCredentialsInputSheet: View {
         }
         .padding(24)
         .frame(width: 420, height: 420)
-    }
-}
-
-// MARK: - Google Search Console Row
-
-struct GoogleSearchConsoleRow: View {
-    let isConfigured: Bool
-    let email: String?
-    let isTesting: Bool
-    let onImport: () -> Void
-    let onTest: () -> Void
-    let onRemove: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Icon
-            Image(systemName: "magnifyingglass")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 40, height: 40)
-                .background(Color.green)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            
-            // Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Google Search Console")
-                    .font(.headline)
-                
-                if isConfigured, let email = email {
-                    Text(email)
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .lineLimit(1)
-                } else {
-                    Text("Import service account key")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-            }
-            
-            Spacer()
-            
-            // Actions
-            if isConfigured {
-                HStack(spacing: 8) {
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Button("Test Ping") { onTest() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                    
-                    Button(role: .destructive) {
-                        onRemove()
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            } else {
-                Button("Import Key") { onImport() }
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
     }
 }
 

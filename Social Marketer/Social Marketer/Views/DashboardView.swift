@@ -21,9 +21,6 @@ struct DashboardView: View {
     ) private var recentPosts: FetchedResults<Post>
     
     @State private var isSchedulerInstalled = false
-    @State private var isPosting = false
-    @State private var showingAlert = false
-    @State private var alertMessage = ""
     
     private let scheduler = PostScheduler()
     
@@ -73,72 +70,15 @@ struct DashboardView: View {
             }
             .padding(.horizontal)
             
-            Divider()
-            
-            // Actions
-            HStack(spacing: 16) {
-                // Manual Post Button
-                Button(action: manualPost) {
-                    HStack {
-                        if isPosting {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                        }
-                        Text("Post Now")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isPosting || enabledPlatformsCount == 0)
-                
-                // Scheduler Toggle
-                Button(action: toggleScheduler) {
-                    HStack {
-                        Image(systemName: isSchedulerInstalled ? "stop.circle" : "play.circle")
-                        Text(isSchedulerInstalled ? "Stop Scheduler" : "Start Scheduler")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal)
-            
-            // Platform List
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Platforms")
-                    .font(.headline)
-                
-                if platforms.isEmpty {
-                    Text("No platforms configured. Go to Settings to add platforms.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    ForEach(platforms) { platform in
-                        PlatformRow(platform: platform)
-                    }
-                }
-            }
-            .padding()
-            .background(Color.secondary.opacity(0.05))
-            .cornerRadius(12)
-            .padding(.horizontal)
-            
-            Spacer()
+            // Recent Errors
+            ErrorLogView()
+                .frame(maxHeight: .infinity)
         }
         .padding(.top)
         .onAppear {
             Task {
                 isSchedulerInstalled = await scheduler.isLaunchAgentInstalled
             }
-        }
-        .alert("Social Marketer", isPresented: $showingAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(alertMessage)
         }
     }
     
@@ -157,45 +97,7 @@ struct DashboardView: View {
         }.count
     }
     
-    // MARK: - Actions
-    
-    private func manualPost() {
-        isPosting = true
-        Task {
-            await scheduler.executeScheduledPost()
-            await MainActor.run {
-                isPosting = false
-                alertMessage = "Post completed! Check the logs for details."
-                showingAlert = true
-            }
-        }
-    }
-    
-    private func toggleScheduler() {
-        Task {
-            do {
-                if isSchedulerInstalled {
-                    try await scheduler.uninstallLaunchAgent()
-                    await MainActor.run {
-                        isSchedulerInstalled = false
-                        alertMessage = "Scheduler stopped. Posts will not be automated."
-                    }
-                } else {
-                    try await scheduler.installLaunchAgent()
-                    await MainActor.run {
-                        isSchedulerInstalled = true
-                        alertMessage = "Scheduler started! Posts will run daily at 9:00 AM."
-                    }
-                }
-                await MainActor.run { showingAlert = true }
-            } catch {
-                await MainActor.run {
-                    alertMessage = "Error: \(error.localizedDescription)"
-                    showingAlert = true
-                }
-            }
-        }
-    }
+
 }
 
 // MARK: - Dashboard Card
@@ -225,41 +127,6 @@ struct DashboardCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.1))
         .cornerRadius(12)
-    }
-}
-
-// MARK: - Platform Row
-
-struct PlatformRow: View {
-    @ObservedObject var platform: Platform
-    
-    var body: some View {
-        HStack {
-            Image(systemName: platform.isEnabled ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(platform.isEnabled ? .green : .secondary)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(platform.name ?? "Unknown")
-                    .font(.body)
-                if let lastPost = platform.lastPostDate {
-                    Text("Last: \(lastPost, style: .relative) ago")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            Toggle("", isOn: Binding(
-                get: { platform.isEnabled },
-                set: { newValue in
-                    platform.isEnabled = newValue
-                    PersistenceController.shared.save()
-                }
-            ))
-            .labelsHidden()
-        }
-        .padding(.vertical, 4)
     }
 }
 

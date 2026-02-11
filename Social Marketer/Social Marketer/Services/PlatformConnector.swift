@@ -7,7 +7,6 @@
 
 import Foundation
 import AppKit
-import os.log
 
 /// Protocol for all platform connectors
 protocol PlatformConnector {
@@ -16,6 +15,7 @@ protocol PlatformConnector {
     
     func authenticate() async throws
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult
+    func postText(_ text: String) async throws -> PostResult
 }
 
 /// Result of a platform post
@@ -82,7 +82,7 @@ private extension NSImage {
 
 final class TwitterConnector: PlatformConnector {
     let platformName = "X (Twitter)"
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Twitter")
+    private let logger = Log.twitter
     private var signer: OAuth1Signer?
     
     var isConfigured: Bool {
@@ -238,7 +238,7 @@ final class TwitterConnector: PlatformConnector {
 
 final class InstagramConnector: PlatformConnector {
     let platformName = "Instagram"
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Instagram")
+    private let logger = Log.instagram
     private var accessToken: String?
     private var businessAccountID: String?
     
@@ -541,7 +541,7 @@ final class InstagramConnector: PlatformConnector {
 
 final class LinkedInConnector: PlatformConnector {
     let platformName = "LinkedIn"
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "LinkedIn")
+    private let logger = Log.linkedin
     private var accessToken: String?
     private var personURN: String?
     
@@ -807,7 +807,7 @@ struct FacebookPageCredentials: Codable {
 
 final class FacebookConnector: PlatformConnector {
     let platformName = "Facebook"
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Facebook")
+    private let logger = Log.facebook
     private var accessToken: String?
     private var pageID: String?
     private var pageName: String?
@@ -1040,7 +1040,7 @@ struct PinterestCredentials: Codable {
 
 final class PinterestConnector: PlatformConnector {
     let platformName = "Pinterest"
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Pinterest")
+    private let logger = Log.pinterest
     private var accessToken: String?
     private var boardID: String?
     private var boardName: String?
@@ -1105,6 +1105,11 @@ final class PinterestConnector: PlatformConnector {
             postURL: URL(string: "https://pinterest.com/pin/\(pin.id)"),
             error: nil
         )
+    }
+    
+    func postText(_ text: String) async throws -> PostResult {
+        // Pinterest requires an image for all pins
+        throw PlatformError.postFailed("Pinterest requires an image. Text-only posts are not supported.")
     }
     
     // MARK: - Board Discovery

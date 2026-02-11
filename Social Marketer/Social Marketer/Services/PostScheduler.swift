@@ -7,13 +7,12 @@
 
 import Foundation
 import AppKit
-import os.log
 
 /// Manages scheduled posting across platforms
 @MainActor
 final class PostScheduler {
     
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Scheduler")
+    private let logger = Log.scheduler
     private let googleIndexing = GoogleIndexingConnector()
     private var isRunning = false
     
@@ -105,6 +104,9 @@ final class PostScheduler {
     func executeScheduledPost() async {
         logger.info("Executing scheduled post...")
         
+        // Check if introductory post is due (every 90 days)
+        await postIntroductoryIfDue()
+        
         do {
             // 1. Fetch daily wisdom
             let rssParser = RSSParser()
@@ -143,6 +145,96 @@ final class PostScheduler {
         } catch {
             logger.error("Scheduled posting failed: \(error.localizedDescription)")
         }
+    }
+    
+    // MARK: - Introductory Post (90-Day Cycle)
+    
+    /// Interval between introductory post reposts (90 days)
+    private static let introRepostInterval: TimeInterval = 90 * 24 * 60 * 60
+    
+    /// Check and post the introductory post if 90+ days have elapsed
+    private func postIntroductoryIfDue() async {
+        let context = PersistenceController.shared.viewContext
+        let introLink = "socialmarketer://introduction"
+        
+        guard let introEntry = CachedWisdomEntry.findByLink(introLink, in: context) else {
+            logger.debug("No introductory post found — skipping 90-day check")
+            return
+        }
+        
+        // Check if it's due: never posted, or last posted ≥90 days ago
+        let isDue: Bool
+        if let lastUsed = introEntry.lastUsedAt {
+            isDue = Date().timeIntervalSince(lastUsed) >= Self.introRepostInterval
+            if !isDue {
+                let daysRemaining = Int((Self.introRepostInterval - Date().timeIntervalSince(lastUsed)) / (24 * 60 * 60))
+                logger.debug("Introductory post not due — \(daysRemaining) days remaining")
+            }
+        } else {
+            isDue = true // Never posted
+        }
+        
+        guard isDue else { return }
+        
+        logger.notice("📢 Introductory post is due — posting to all platforms")
+        
+        let caption = introEntry.content ?? ""
+        let link = URL(string: "https://www.wisdombook.life")!
+        
+        let enabledPlatforms = Platform.fetchEnabled(in: context)
+        guard !enabledPlatforms.isEmpty else {
+            logger.warning("No platforms enabled for introductory post")
+            return
+        }
+        
+        // Create a Post record for the intro
+        let post = Post(context: context, content: caption, imageURL: nil, link: link)
+        post.scheduledDate = Date()
+        
+        var anySuccess = false
+        
+        for platform in enabledPlatforms {
+            let platformName = platform.name ?? "Unknown"
+            
+            guard let connector = connectorFor(platform) else { continue }
+            guard let apiType = platform.apiType,
+                  OAuthManager.shared.hasValidTokens(for: apiType) else {
+                logger.warning("\(platformName) not authenticated for intro post, skipping")
+                continue
+            }
+            
+            do {
+                // Post as text (intro post is text-only, no graphic)
+                let result = try await connector.postText(caption)
+                
+                if result.success {
+                    let log = PostLog(context: context, post: post, platform: platform, postID: result.postID, postURL: result.postURL)
+                    post.addToLogs(log)
+                    anySuccess = true
+                    logger.info("✅ Intro posted to \(platformName)")
+                } else {
+                    let errorMsg = result.error?.localizedDescription ?? "Unknown error"
+                    let log = PostLog(context: context, post: post, platform: platform, error: errorMsg)
+                    post.addToLogs(log)
+                    logger.error("❌ Intro post failed on \(platformName): \(errorMsg)")
+                }
+            } catch {
+                let log = PostLog(context: context, post: post, platform: platform, error: error.localizedDescription)
+                post.addToLogs(log)
+                logger.error("❌ Intro post error on \(platformName): \(error.localizedDescription)")
+            }
+        }
+        
+        if anySuccess {
+            post.postStatus = .posted
+            post.postedDate = Date()
+            introEntry.markAsUsed()
+            logger.notice("📢 Introductory post completed — next due in 90 days")
+        } else {
+            post.postStatus = .failed
+        }
+        
+        PersistenceController.shared.save()
     }
     
     // MARK: - Private Methods

@@ -7,12 +7,11 @@
 //
 
 import Foundation
-import os.log
 
 /// Notifies Google Search Console when wisdombook.life URLs are published or updated
 final class GoogleIndexingConnector {
     
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "GoogleIndexing")
+    private let logger = Log.indexing
     
     // MARK: - Configuration
     

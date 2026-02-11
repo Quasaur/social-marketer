@@ -7,7 +7,6 @@
 
 import Foundation
 import CoreData
-import os.log
 
 /// Service for managing wisdom content from RSS feeds
 actor ContentService {
@@ -19,7 +18,7 @@ actor ContentService {
     // MARK: - Properties
     
     private let rssParser = RSSParser()
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "ContentService")
+    private let logger = Log.content
     
     // MARK: - Public Methods
     

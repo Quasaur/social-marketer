@@ -6,7 +6,6 @@
 //
 
 import CoreData
-import os.log
 
 /// Manages the Core Data stack with App Group support
 final class PersistenceController {
@@ -39,7 +38,7 @@ final class PersistenceController {
     // MARK: - Properties
     
     let container: NSPersistentContainer
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Persistence")
+    private let logger = Log.persistence
     
     /// App Group identifier for shared container
     private static let appGroupIdentifier = "group.com.wisdombook.SocialMarketer"
@@ -56,7 +55,7 @@ final class PersistenceController {
             // Use App Group shared container for launchd helper access
             if let storeURL = Self.sharedStoreURL {
                 container.persistentStoreDescriptions.first?.url = storeURL
-                logger.info("Core Data store: \(storeURL.path)")
+                logger.notice("Core Data store: \(storeURL.path)")
             }
         }
         
@@ -64,9 +63,12 @@ final class PersistenceController {
             if let error = error {
                 self.logger.error("Core Data load failed: \(error.localizedDescription)")
                 // Log but don't crash - allows app to launch for debugging
-                print("⚠️ Core Data Error: \(error)")
+                Log.persistence.error("⚠️ Core Data Error: \(error.localizedDescription)")
+                Task { @MainActor in
+                    ErrorLog.shared.log(category: "Persistence", message: "Core Data load failed", detail: error.localizedDescription)
+                }
             } else {
-                self.logger.info("Core Data loaded successfully")
+                self.logger.notice("Core Data loaded successfully")
             }
         }
         
@@ -89,7 +91,7 @@ final class PersistenceController {
                 return appGroupURL.appendingPathComponent("SocialMarketer.sqlite")
             } catch {
                 // App Group exists but we can't write to it (sandbox issue)
-                print("⚠️ App Group not accessible, using Application Support: \(error.localizedDescription)")
+                Log.persistence.warning("App Group not accessible, using Application Support: \(error.localizedDescription)")
             }
         }
         

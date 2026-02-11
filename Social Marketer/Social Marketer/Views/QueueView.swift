@@ -46,7 +46,7 @@ struct QueueView: View {
             
             // Action Buttons
             HStack(spacing: 12) {
-                // Post Now button
+                // Manual Post button
                 Button {
                     Task { await postNow() }
                 } label: {
@@ -57,7 +57,7 @@ struct QueueView: View {
                             Text("Posting to all platforms...")
                         } else {
                             Image(systemName: "paperplane.fill")
-                            Text("Post Now")
+                            Text("Manual Post")
                         }
                     }
                 }
@@ -68,12 +68,16 @@ struct QueueView: View {
                 Spacer()
                 
                 // Scheduler toggle
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     Image(systemName: schedulerInstalled ? "clock.badge.checkmark" : "clock")
-                        .foregroundStyle(schedulerInstalled ? .green : .secondary)
+                        .foregroundStyle(schedulerInstalled ? .green : .orange)
+                    
+                    Text("Daily Scheduler")
+                        .font(.body)
                     
                     Toggle("Daily Scheduler", isOn: $schedulerInstalled)
-                        .toggleStyle(.switch)
+                        .toggleStyle(.status)
+                        .labelsHidden()
                         .onChange(of: schedulerInstalled) { _, newValue in
                             toggleScheduler(enabled: newValue)
                         }

@@ -90,9 +90,10 @@ extension CachedWisdomEntry {
         }
     }
     
-    /// Fetch least-used entries for intelligent selection
+    /// Fetch least-used entries for intelligent selection (excludes Introduction posts)
     static func fetchLeastUsed(limit: Int = 10, in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
         let request = fetchRequest()
+        request.predicate = NSPredicate(format: "category != %@", WisdomEntry.WisdomCategory.introduction.rawValue)
         request.sortDescriptors = [
             NSSortDescriptor(keyPath: \CachedWisdomEntry.usedCount, ascending: true),
             NSSortDescriptor(keyPath: \CachedWisdomEntry.pubDate, ascending: false)

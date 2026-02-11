@@ -81,6 +81,7 @@ struct PlatformConfigRow: View {
                     PersistenceController.shared.save()
                 }
             ))
+            .toggleStyle(.status)
             .labelsHidden()
             .disabled(!hasCredentials)
             

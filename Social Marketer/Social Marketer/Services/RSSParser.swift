@@ -21,6 +21,7 @@ struct WisdomEntry: Identifiable, Codable {
         case thought = "Thought"
         case quote = "Quote"
         case passage = "Passage"
+        case introduction = "Introduction"
     }
 }
 
@@ -47,14 +48,27 @@ actor RSSParser {
     
     /// Fetch the daily wisdom entry
     func fetchDaily() async throws -> WisdomEntry? {
+        Log.rss.info("Fetching daily wisdom entry...")
         let entries = try await fetchFeed(url: Self.feedURLs["daily"]!)
+        Log.rss.debug("Daily fetch returned \(entries.count) entries")
         return entries.first
     }
     
     /// Fetch entries from a specific feed
     func fetchFeed(url: URL) async throws -> [WisdomEntry] {
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return try parseRSS(data: data)
+        Log.rss.info("Fetching feed: \(url.lastPathComponent)")
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let entries = try parseRSS(data: data)
+            Log.rss.info("Parsed \(entries.count) entries from \(url.lastPathComponent)")
+            return entries
+        } catch {
+            Log.rss.error("Feed fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
+            Task { @MainActor in
+                ErrorLog.shared.log(category: "RSS", message: "Feed fetch failed for \(url.lastPathComponent)", detail: error.localizedDescription)
+            }
+            throw error
+        }
     }
     
     // MARK: - Private Methods

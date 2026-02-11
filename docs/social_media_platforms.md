@@ -2,7 +2,7 @@
 
 **Owner**: Calvin Mitchell (@Quasaur)  
 **Purpose**: Marketing and content distribution for The Book of Wisdom  
-**Last Updated**: February 4, 2026
+**Last Updated**: February 11, 2026
 
 ---
 
@@ -155,34 +155,37 @@
 
 ---
 
-## Platform Categories
+## Platform Categories (Social Marketer Tiers)
 
-### High-Impact Platforms (Priority 1)
+### 🏆 The Top Five (Connected)
 
-- **X (Twitter)**: Real-time engagement, viral potential
-- **Instagram**: Visual content, broad reach
-- **LinkedIn**: Professional audience, thought leadership
-- **YouTube**: Video content, long-form engagement
-- **Substack**: Newsletter subscribers, dedicated audience
+Platforms with built connectors in Social Marketer — fully automated posting.
 
-### Medium-Impact Platforms (Priority 2)
+- **X (Twitter)**: `TwitterConnector` — OAuth 1.0a, text + image
+- **Instagram**: `InstagramConnector` — Graph API, image + carousel
+- **LinkedIn**: `LinkedInConnector` — OAuth 2.0, text + image
+- **Facebook**: `FacebookConnector` — Graph API, Page posting
+- **Pinterest**: `PinterestConnector` — OAuth 2.0, Pin creation
 
-- **Facebook**: Broad reach, groups/pages
-- **TikTok**: Viral potential, younger audience
-- **Pinterest**: Evergreen content, visual discovery
-- **Bluesky**: Growing platform, engaged users
-- **Tumblr**: Creative community
+### 📡 API Available (Next Up)
 
-### Niche/Alternative Platforms (Priority 3)
+Platforms with public APIs — connectors can be built.
 
-- **GETTR**: Specific audience
-- **GAB**: Free speech community
-- **MeWe**: Privacy-focused users
-- **Parler**: Alternative social media
-- **Black Planet**: Cultural community
-- **Lemon8**: Lifestyle content
-- **Goodreads**: Book community
-- **MySpace**: Legacy platform
+- **YouTube**: Google Data API v3
+- **TikTok**: Content Posting API
+- **Threads**: Meta Threads API
+- **Bluesky**: AT Protocol (open)
+- **Reddit**: Reddit API
+
+### 📋 The Rest (Manual)
+
+All other platforms — manual posting, limited/no API.
+
+- **GETTR**, **GAB**, **MeWe**, **Parler**: Alternative social
+- **Substack**: Newsletter / manual
+- **Medium**: API deprecated
+- **Tumblr**: Limited API
+- **Black Planet**, **Lemon8**, **Goodreads**, **MySpace**: Niche
 
 ---
 
@@ -248,4 +251,4 @@
 
 ---
 
-**Last Updated**: February 4, 2026
+**Last Updated**: February 11, 2026

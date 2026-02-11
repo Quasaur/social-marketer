@@ -10,7 +10,6 @@ import AuthenticationServices
 import CryptoKit
 import Combine
 import Network // Added Network import
-import os.log
 
 /// Manages OAuth 2.0 authentication flows for all platforms
 @MainActor
@@ -27,7 +26,7 @@ final class OAuthManager: NSObject, ObservableObject {
     
     // MARK: - Properties
     
-    private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "OAuth")
+    private let logger = Log.oauth
     private var authSession: ASWebAuthenticationSession?
     private var currentContinuation: CheckedContinuation<OAuthTokens, Error>?
     

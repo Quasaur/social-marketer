@@ -76,11 +76,13 @@ final class QuoteGraphicGenerator {
     
     /// Generate a quote graphic from a wisdom entry
     func generate(from entry: WisdomEntry, template: BorderTemplate = .random) -> NSImage? {
+        Log.graphic.info("Generating graphic for '\(entry.title)' with template \(template.displayName)")
         return generateImage(title: entry.title, content: entry.content, reference: entry.reference, template: template)
     }
     
     /// Generate a quote graphic from a cached wisdom entry
     func generate(from entry: CachedWisdomEntry, template: BorderTemplate = .random) -> NSImage? {
+        Log.graphic.info("Generating graphic for cached entry '\(entry.title ?? "Unknown")' with template \(template.displayName)")
         return generateImage(title: entry.title ?? "Wisdom", content: entry.content ?? "", reference: entry.reference, template: template)
     }
     
@@ -113,6 +115,7 @@ final class QuoteGraphicGenerator {
         
         image.unlockFocus()
         
+        Log.graphic.debug("Graphic generated: \(Int(self.imageSize.width))×\(Int(self.imageSize.height)), template: \(template.displayName)")
         return image
     }
     
@@ -121,9 +124,14 @@ final class QuoteGraphicGenerator {
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let pngData = bitmap.representation(using: .png, properties: [:]) else {
+            Log.graphic.error("Failed to create PNG data for save")
+            Task { @MainActor in
+                ErrorLog.shared.log(category: "Graphics", message: "Failed to create PNG data for save")
+            }
             throw GeneratorError.saveFailed
         }
         try pngData.write(to: url)
+        Log.graphic.info("Graphic saved to \(url.lastPathComponent)")
     }
     
     enum GeneratorError: Error {

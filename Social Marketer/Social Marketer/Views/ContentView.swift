@@ -26,6 +26,8 @@ struct ContentView: View {
                 Section("Configuration") {
                     Label("Platforms", systemImage: "square.stack.3d.up")
                         .tag("platforms")
+                    Label("Discovery", systemImage: "safari")
+                        .tag("discovery")
                     Label("Settings", systemImage: "gear")
                         .tag("settings")
                 }
@@ -43,6 +45,8 @@ struct ContentView: View {
                 QueueView()
             case "platforms":
                 PlatformSettingsView()
+            case "discovery":
+                DiscoveryView()
             case "settings":
                 SettingsView()
             default:

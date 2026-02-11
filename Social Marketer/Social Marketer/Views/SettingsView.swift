@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @AppStorage("postingHour") private var postingHour = 9
     @AppStorage("postingMinute") private var postingMinute = 0
     @AppStorage("includeHashtags") private var includeHashtags = true
     @AppStorage("includeEmoji") private var includeEmoji = true
+    @AppStorage("debugModeEnabled") private var debugModeEnabled = false
+    @State private var copiedCommand = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -51,7 +54,9 @@ struct SettingsView: View {
                 
                 Section("Post Formatting") {
                     Toggle("Include hashtags (#wisdom #wisdombook)", isOn: $includeHashtags)
+                        .toggleStyle(.status)
                     Toggle("Include emoji (🔗 📖)", isOn: $includeEmoji)
+                        .toggleStyle(.status)
                 }
                 
                 Section("Content Source") {
@@ -63,6 +68,36 @@ struct SettingsView: View {
                     
                     Link("View Feed", destination: URL(string: "https://wisdombook.life/feed/daily.xml")!)
                         .font(.caption)
+                }
+                
+                Section("Diagnostics") {
+                    Toggle("Debug Mode", isOn: $debugModeEnabled)
+                        .toggleStyle(.status)
+                        .onChange(of: debugModeEnabled) { _, newValue in
+                            Log.app.info("Debug mode \(newValue ? "enabled" : "disabled")")
+                        }
+                    
+                    Text("When enabled, verbose debug messages appear in the Recent Errors panel on the Dashboard.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Log.diagnosticCommand, forType: .string)
+                        copiedCommand = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copiedCommand = false
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: copiedCommand ? "checkmark" : "doc.on.doc")
+                            Text(copiedCommand ? "Copied!" : "Copy Diagnostic Command")
+                        }
+                    }
+                    
+                    Text("Copies a Terminal command that shows the last hour of Social Marketer logs.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 
                 Section("App Info") {
