@@ -83,13 +83,18 @@ private extension NSImage {
 final class TwitterConnector: PlatformConnector {
     let platformName = "X (Twitter)"
     private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Twitter")
-    private var accessToken: String?
+    private var signer: OAuth1Signer?
     
     var isConfigured: Bool {
         get async {
             do {
-                let tokens = try OAuthManager.shared.getTokens(for: "twitter")
-                accessToken = tokens.accessToken
+                let creds = try OAuthManager.shared.getTwitterOAuth1Credentials()
+                signer = OAuth1Signer(
+                    consumerKey: creds.consumerKey,
+                    consumerSecret: creds.consumerSecret,
+                    accessToken: creds.accessToken,
+                    accessTokenSecret: creds.accessTokenSecret
+                )
                 return true
             } catch {
                 return false
@@ -98,17 +103,35 @@ final class TwitterConnector: PlatformConnector {
     }
     
     func authenticate() async throws {
-        let config = try OAuthManager.shared.getConfig(for: "twitter")
-        let tokens = try await OAuthManager.shared.authenticate(
-            platform: "twitter",
-            config: config
-        )
-        try OAuthManager.shared.saveTokens(tokens, for: "twitter")
-        accessToken = tokens.accessToken
+        // OAuth 1.0a uses pre-generated tokens from the X Developer Portal
+        // No browser flow needed — just verify credentials are stored
+        if signer == nil {
+            let creds = try OAuthManager.shared.getTwitterOAuth1Credentials()
+            signer = OAuth1Signer(
+                consumerKey: creds.consumerKey,
+                consumerSecret: creds.consumerSecret,
+                accessToken: creds.accessToken,
+                accessTokenSecret: creds.accessTokenSecret
+            )
+        }
+    }
+    
+    /// Post a text-only tweet (useful for testing the auth pipeline)
+    func postText(_ text: String) async throws -> PostResult {
+        guard let signer = signer else {
+            throw PlatformError.notConfigured
+        }
+        
+        let result = try await createTweet(text: text, mediaID: nil, signer: signer)
+        
+        logger.info("Text tweet posted successfully: \(result.id)")
+        
+        let postURL = URL(string: "https://x.com/i/status/\(result.id)")
+        return PostResult(success: true, postID: result.id, postURL: postURL, error: nil)
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
-        guard let token = accessToken else {
+        guard let signer = signer else {
             throw PlatformError.notConfigured
         }
         
@@ -116,26 +139,26 @@ final class TwitterConnector: PlatformConnector {
             throw PlatformError.postFailed("Failed to convert image to JPEG")
         }
         
-        // Step 1: Upload media using v2 media upload
-        let mediaID = try await uploadMedia(imageData: imageData, token: token)
+        // Step 1: Upload media using v1.1 media upload (OAuth 1.0a signed)
+        let mediaID = try await uploadMedia(imageData: imageData, signer: signer)
         
         // Step 2: Create tweet with media
         let fullCaption = "\(caption)\n\n🔗 \(link.absoluteString)"
-        let tweetResult = try await createTweet(text: fullCaption, mediaID: mediaID, token: token)
+        let tweetResult = try await createTweet(text: fullCaption, mediaID: mediaID, signer: signer)
         
         logger.info("Tweet posted successfully: \(tweetResult.id)")
         
-        let postURL = URL(string: "https://twitter.com/i/status/\(tweetResult.id)")
+        let postURL = URL(string: "https://x.com/i/status/\(tweetResult.id)")
         return PostResult(success: true, postID: tweetResult.id, postURL: postURL, error: nil)
     }
     
-    private func uploadMedia(imageData: Data, token: String) async throws -> String {
-        // X API v2 media upload (chunked for images > 5MB, simple for smaller)
+    // MARK: - Media Upload (v1.1 with OAuth 1.0a signing)
+    
+    private func uploadMedia(imageData: Data, signer: OAuth1Signer) async throws -> String {
         let url = URL(string: "https://upload.twitter.com/1.1/media/upload.json")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -149,12 +172,16 @@ final class TwitterConnector: PlatformConnector {
         
         request.httpBody = body
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Sign with OAuth 1.0a (multipart body is NOT included in signature base)
+        let signedRequest = signer.sign(request)
+        
+        let (data, response) = try await URLSession.shared.data(for: signedRequest)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            logger.error("Media upload failed: \(errorBody)")
-            throw PlatformError.postFailed("Media upload failed: \(errorBody)")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            logger.error("Media upload failed (\(statusCode)): \(errorBody)")
+            throw PlatformError.postFailed("Media upload failed (\(statusCode)): \(errorBody)")
         }
         
         struct MediaResponse: Decodable {
@@ -162,30 +189,36 @@ final class TwitterConnector: PlatformConnector {
         }
         
         let mediaResponse = try JSONDecoder().decode(MediaResponse.self, from: data)
+        logger.info("Media uploaded: \(mediaResponse.media_id_string)")
         return mediaResponse.media_id_string
     }
     
-    private func createTweet(text: String, mediaID: String, token: String) async throws -> (id: String, text: String) {
+    // MARK: - Tweet Creation (v2 with OAuth 1.0a signing)
+    
+    private func createTweet(text: String, mediaID: String?, signer: OAuth1Signer) async throws -> (id: String, text: String) {
         let url = URL(string: "https://api.twitter.com/2/tweets")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let payload: [String: Any] = [
-            "text": text,
-            "media": ["media_ids": [mediaID]]
-        ]
+        var payload: [String: Any] = ["text": text]
+        if let mediaID = mediaID {
+            payload["media"] = ["media_ids": [mediaID]]
+        }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Sign with OAuth 1.0a (JSON body is NOT included in signature base)
+        let signedRequest = signer.sign(request)
+        
+        let (data, response) = try await URLSession.shared.data(for: signedRequest)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            logger.error("Tweet creation failed: \(errorBody)")
-            throw PlatformError.postFailed("Tweet creation failed: \(errorBody)")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            logger.error("Tweet creation failed (\(statusCode)): \(errorBody)")
+            throw PlatformError.postFailed("Tweet creation failed (\(statusCode)): \(errorBody)")
         }
         
         struct TweetResponse: Decodable {
@@ -586,23 +619,35 @@ final class LinkedInConnector: PlatformConnector {
 
 // MARK: - Facebook Connector
 
+/// Credentials for posting to a Facebook Page, stored in Keychain
+struct FacebookPageCredentials: Codable {
+    let pageID: String
+    let pageName: String
+    let pageAccessToken: String
+}
+
 final class FacebookConnector: PlatformConnector {
     let platformName = "Facebook"
     private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Facebook")
     private var accessToken: String?
     private var pageID: String?
+    private var pageName: String?
     private var pageAccessToken: String?
     
     var isConfigured: Bool {
         get async {
-            do {
-                let tokens = try OAuthManager.shared.getTokens(for: "facebook")
-                accessToken = tokens.accessToken
-                return pageID != nil && pageAccessToken != nil
-            } catch {
-                return false
+            // Try to load page credentials from Keychain
+            if pageID == nil || pageAccessToken == nil {
+                loadPageCredentials()
             }
+            return pageID != nil && pageAccessToken != nil
         }
+    }
+    
+    /// The name of the connected Facebook Page (if any)
+    var connectedPageName: String? {
+        if pageName == nil { loadPageCredentials() }
+        return pageName
     }
     
     func configure(pageID: String, pageAccessToken: String) {
@@ -618,6 +663,48 @@ final class FacebookConnector: PlatformConnector {
         )
         try OAuthManager.shared.saveTokens(tokens, for: "facebook")
         accessToken = tokens.accessToken
+        
+        // Automatically fetch Page Access Token after user authorization
+        try await fetchPageAccessToken(userToken: tokens.accessToken)
+    }
+    
+    /// Post a text-only message to the Facebook Page
+    func postText(_ text: String) async throws -> PostResult {
+        guard let pageToken = pageAccessToken, let page = pageID else {
+            throw PlatformError.notConfigured
+        }
+        
+        // Facebook Graph API - Post text to page feed
+        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(page)/feed")!
+        components.queryItems = [
+            URLQueryItem(name: "message", value: text),
+            URLQueryItem(name: "access_token", value: pageToken)
+        ]
+        
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            logger.error("Facebook text post failed: \(errorBody)")
+            throw PlatformError.postFailed("Facebook text post failed: \(errorBody)")
+        }
+        
+        struct PostResponse: Decodable {
+            let id: String
+        }
+        
+        let postResponse = try JSONDecoder().decode(PostResponse.self, from: data)
+        logger.info("Facebook text post created: \(postResponse.id)")
+        
+        return PostResult(
+            success: true,
+            postID: postResponse.id,
+            postURL: URL(string: "https://facebook.com/\(postResponse.id)"),
+            error: nil
+        )
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
@@ -632,7 +719,7 @@ final class FacebookConnector: PlatformConnector {
         let fullCaption = "\(caption)\n\n🔗 \(link.absoluteString)"
         
         // Facebook Graph API - Post photo to page
-        let url = URL(string: "https://graph.facebook.com/v19.0/\(page)/photos")!
+        let url = URL(string: "https://graph.facebook.com/v24.0/\(page)/photos")!
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -684,6 +771,84 @@ final class FacebookConnector: PlatformConnector {
             postURL: URL(string: "https://facebook.com/\(photoResponse.id)"),
             error: nil
         )
+    }
+    
+    // MARK: - Page Access Token Exchange
+    
+    /// After user OAuth, call /me/accounts to get the Page Access Token
+    private func fetchPageAccessToken(userToken: String) async throws {
+        let url = URL(string: "https://graph.facebook.com/v24.0/me/accounts?access_token=\(userToken)")!
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            logger.error("Failed to fetch pages: \(errorBody)")
+            throw PlatformError.postFailed("Failed to fetch Facebook Pages: \(errorBody)")
+        }
+        
+        // Log the raw response for debugging
+        let rawResponse = String(data: data, encoding: .utf8) ?? "nil"
+        logger.info("GET /me/accounts response: \(rawResponse)")
+        
+        struct PagesResponse: Decodable {
+            struct Page: Decodable {
+                let id: String
+                let name: String
+                let access_token: String
+            }
+            let data: [Page]
+        }
+        
+        let pagesResponse = try JSONDecoder().decode(PagesResponse.self, from: data)
+        
+        guard let page = pagesResponse.data.first else {
+            // Debug: check what permissions were actually granted
+            let grantedPermissions = await checkGrantedPermissions(token: userToken)
+            logger.error("No Facebook Pages found. Granted permissions: \(grantedPermissions)")
+            throw PlatformError.postFailed("No Facebook Pages found. Granted permissions: \(grantedPermissions). Make sure pages_show_list and pages_manage_posts are approved.")
+        }
+        
+        // Use the first page (or find "The Book of Wisdom" if multiple)
+        let targetPage = pagesResponse.data.first(where: {
+            $0.name.localizedCaseInsensitiveContains("wisdom") ||
+            $0.name.localizedCaseInsensitiveContains("book")
+        }) ?? page
+        
+        pageID = targetPage.id
+        pageName = targetPage.name
+        pageAccessToken = targetPage.access_token
+        
+        // Persist to Keychain
+        let pageCreds = FacebookPageCredentials(
+            pageID: targetPage.id,
+            pageName: targetPage.name,
+            pageAccessToken: targetPage.access_token
+        )
+        try KeychainService.shared.save(pageCreds, for: "facebook_page")
+        
+        logger.info("Facebook Page connected: \(targetPage.name) (ID: \(targetPage.id))")
+    }
+    
+    /// Debug helper: check which permissions were actually granted by the user
+    private func checkGrantedPermissions(token: String) async -> String {
+        let url = URL(string: "https://graph.facebook.com/v24.0/me/permissions?access_token=\(token)")!
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let perms = json["data"] as? [[String: Any]] else {
+            return "unable to check"
+        }
+        return perms.map { "\($0["permission"] ?? "?"): \($0["status"] ?? "?")" }.joined(separator: ", ")
+    }
+    
+    /// Load page credentials from Keychain
+    private func loadPageCredentials() {
+        guard let pageCreds = try? KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page") else {
+            return
+        }
+        pageID = pageCreds.pageID
+        pageName = pageCreds.pageName
+        pageAccessToken = pageCreds.pageAccessToken
     }
 }
 

@@ -51,7 +51,7 @@ final class OAuthManager: NSObject, ObservableObject {
                 authURL: URL(string: "https://twitter.com/i/oauth2/authorize")!,
                 tokenURL: URL(string: "https://api.twitter.com/2/oauth2/token")!,
                 redirectURI: "socialmarketer://oauth/callback",
-                scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+                scopes: ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"],
                 usePKCE: true
             )
         }
@@ -74,10 +74,10 @@ final class OAuthManager: NSObject, ObservableObject {
                 platformID: "facebook",
                 clientID: clientID,
                 clientSecret: clientSecret,
-                authURL: URL(string: "https://www.facebook.com/v19.0/dialog/oauth")!,
-                tokenURL: URL(string: "https://graph.facebook.com/v19.0/oauth/access_token")!,
-                redirectURI: "socialmarketer://oauth/callback",
-                scopes: ["pages_manage_posts", "pages_read_engagement", "instagram_basic", "instagram_content_publish"],
+                authURL: URL(string: "https://www.facebook.com/v24.0/dialog/oauth")!,
+                tokenURL: URL(string: "https://graph.facebook.com/v24.0/oauth/access_token")!,
+                redirectURI: "http://localhost:8989/oauth/callback",
+                scopes: ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "business_management"],
                 usePKCE: false
             )
         }
@@ -101,6 +101,37 @@ final class OAuthManager: NSObject, ObservableObject {
     struct APICredentials: Codable {
         let clientID: String
         let clientSecret: String?
+    }
+    
+    // MARK: - Twitter OAuth 1.0a Credentials
+    
+    struct TwitterOAuth1Credentials: Codable {
+        let consumerKey: String
+        let consumerSecret: String
+        let accessToken: String
+        let accessTokenSecret: String
+    }
+    
+    /// Save Twitter OAuth 1.0a credentials (4 keys from Developer Portal)
+    func saveTwitterOAuth1Credentials(_ creds: TwitterOAuth1Credentials) throws {
+        try KeychainService.shared.save(creds, for: "twitter_oauth1")
+        logger.info("Twitter OAuth 1.0a credentials saved")
+    }
+    
+    /// Get Twitter OAuth 1.0a credentials
+    func getTwitterOAuth1Credentials() throws -> TwitterOAuth1Credentials {
+        return try KeychainService.shared.retrieve(TwitterOAuth1Credentials.self, for: "twitter_oauth1")
+    }
+    
+    /// Check if Twitter OAuth 1.0a credentials exist
+    func hasTwitterOAuth1Credentials() -> Bool {
+        return (try? getTwitterOAuth1Credentials()) != nil
+    }
+    
+    /// Remove Twitter OAuth 1.0a credentials
+    func removeTwitterOAuth1Credentials() throws {
+        try KeychainService.shared.delete(for: "twitter_oauth1")
+        logger.info("Twitter OAuth 1.0a credentials removed")
     }
     
     /// Save API credentials for a platform

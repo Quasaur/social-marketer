@@ -26,7 +26,14 @@ struct PlatformSettingsView: View {
     // LinkedIn test state
     @State private var linkedinTesting = false
     @State private var showingSuccess = false
+    
+    // Twitter test state
+    @State private var twitterTesting = false
     @State private var successMessage = ""
+    
+    // Facebook test state
+    @State private var facebookTesting = false
+    @State private var facebookPageName: String?
     
     enum ConnectionState {
         case disconnected
@@ -46,7 +53,7 @@ struct PlatformSettingsView: View {
     
     private let platforms: [PlatformInfo] = [
         PlatformInfo(id: "twitter", name: "X (Twitter)", icon: "bird", color: .black,
-                     requiresSecret: false, clientIDLabel: "Client ID", clientSecretLabel: nil),
+                     requiresSecret: true, clientIDLabel: "Consumer Key", clientSecretLabel: "Consumer Secret"),
         PlatformInfo(id: "linkedin", name: "LinkedIn", icon: "person.2", color: .blue,
                      requiresSecret: true, clientIDLabel: "Client ID", clientSecretLabel: "Client Secret"),
         PlatformInfo(id: "facebook", name: "Facebook", icon: "person.3", color: .indigo,
@@ -86,14 +93,7 @@ struct PlatformSettingsView: View {
                             onSetup: { showCredentialsSheet(for: platform) },
                             onConnect: { await connectPlatform(platform) },
                             onDisconnect: { disconnectPlatform(platform) },
-                            extraButton: platform.id == "linkedin" && connectionStatus["linkedin"] == .connected ? AnyView(
-                                Button(linkedinTesting ? "Posting..." : "Test Post") {
-                                    Task { await testLinkedInPost() }
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(linkedinTesting)
-                            ) : nil
+                            extraButton: extraButton(for: platform)
                         )
                         Divider()
                             .padding(.leading, 60)
@@ -150,12 +150,25 @@ struct PlatformSettingsView: View {
             Text(successMessage)
         }
         .sheet(item: $selectedPlatform) { platform in
-            CredentialsInputSheet(
-                platform: platform,
-                onSave: { clientID, clientSecret in
-                    saveCredentials(platform: platform, clientID: clientID, clientSecret: clientSecret)
-                }
-            )
+            if platform.id == "twitter" {
+                TwitterCredentialsInputSheet(
+                    onSave: { consumerKey, consumerSecret, accessToken, accessTokenSecret in
+                        saveTwitterCredentials(
+                            consumerKey: consumerKey,
+                            consumerSecret: consumerSecret,
+                            accessToken: accessToken,
+                            accessTokenSecret: accessTokenSecret
+                        )
+                    }
+                )
+            } else {
+                CredentialsInputSheet(
+                    platform: platform,
+                    onSave: { clientID, clientSecret in
+                        saveCredentials(platform: platform, clientID: clientID, clientSecret: clientSecret)
+                    }
+                )
+            }
         }
         .fileImporter(
             isPresented: $showingFilePicker,
@@ -168,14 +181,19 @@ struct PlatformSettingsView: View {
     
     private func loadStates() {
         for platform in platforms {
-            // Check if credentials exist
-            credentialStatus[platform.id] = oauthManager.hasAPICredentials(for: platform.id)
-            
-            // Check if connected
-            if oauthManager.hasValidTokens(for: platform.id) {
-                connectionStatus[platform.id] = .connected
+            if platform.id == "twitter" {
+                // Twitter uses OAuth 1.0a — check for 4-key credentials
+                let hasTwitterCreds = oauthManager.hasTwitterOAuth1Credentials()
+                credentialStatus["twitter"] = hasTwitterCreds
+                connectionStatus["twitter"] = hasTwitterCreds ? .connected : .disconnected
             } else {
-                connectionStatus[platform.id] = .disconnected
+                // Other platforms use OAuth 2.0
+                credentialStatus[platform.id] = oauthManager.hasAPICredentials(for: platform.id)
+                if oauthManager.hasValidTokens(for: platform.id) {
+                    connectionStatus[platform.id] = .connected
+                } else {
+                    connectionStatus[platform.id] = .disconnected
+                }
             }
         }
         
@@ -188,6 +206,38 @@ struct PlatformSettingsView: View {
         // Google Search Console
         gscConfigured = googleIndexing.isConfigured
         gscEmail = googleIndexing.serviceAccountEmail
+    }
+    
+    private func extraButton(for platform: PlatformInfo) -> AnyView? {
+        if platform.id == "twitter" && connectionStatus["twitter"] == .connected {
+            return AnyView(
+                Button(twitterTesting ? "Posting..." : "Test Tweet") {
+                    Task { await testTwitterPost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(twitterTesting)
+            )
+        } else if platform.id == "linkedin" && connectionStatus["linkedin"] == .connected {
+            return AnyView(
+                Button(linkedinTesting ? "Posting..." : "Test Post") {
+                    Task { await testLinkedInPost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(linkedinTesting)
+            )
+        } else if platform.id == "facebook" && connectionStatus["facebook"] == .connected {
+            return AnyView(
+                Button(facebookTesting ? "Posting..." : "Test Post") {
+                    Task { await testFacebookPost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(facebookTesting)
+            )
+        }
+        return nil
     }
     
     private func showCredentialsSheet(for platform: PlatformInfo) {
@@ -213,16 +263,45 @@ struct PlatformSettingsView: View {
         }
     }
     
+    private func saveTwitterCredentials(consumerKey: String, consumerSecret: String, accessToken: String, accessTokenSecret: String) {
+        do {
+            let creds = OAuthManager.TwitterOAuth1Credentials(
+                consumerKey: consumerKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                consumerSecret: consumerSecret.trimmingCharacters(in: .whitespacesAndNewlines),
+                accessToken: accessToken.trimmingCharacters(in: .whitespacesAndNewlines),
+                accessTokenSecret: accessTokenSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            try oauthManager.saveTwitterOAuth1Credentials(creds)
+            credentialStatus["twitter"] = true
+            connectionStatus["twitter"] = .connected
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
     private func connectPlatform(_ platform: PlatformInfo) async {
+        // Twitter uses OAuth 1.0a — already connected when credentials are saved
+        if platform.id == "twitter" {
+            connectionStatus["twitter"] = oauthManager.hasTwitterOAuth1Credentials() ? .connected : .disconnected
+            return
+        }
+        
         // Instagram uses Facebook auth
         let targetID = platform.id == "instagram" ? "facebook" : platform.id
         
         connectionStatus[platform.id] = .connecting
         
         do {
-            let config = try oauthManager.getConfig(for: targetID)
-            let tokens = try await oauthManager.authenticate(platform: targetID, config: config)
-            try oauthManager.saveTokens(tokens, for: targetID)
+            if targetID == "facebook" {
+                // Facebook needs its own flow to also fetch Page Access Token
+                let connector = FacebookConnector()
+                try await connector.authenticate()
+            } else {
+                let config = try oauthManager.getConfig(for: targetID)
+                let tokens = try await oauthManager.authenticate(platform: targetID, config: config)
+                try oauthManager.saveTokens(tokens, for: targetID)
+            }
             
             connectionStatus[platform.id] = .connected
             
@@ -238,7 +317,12 @@ struct PlatformSettingsView: View {
     
     private func disconnectPlatform(_ platform: PlatformInfo) {
         do {
-            try oauthManager.removeTokens(for: platform.id)
+            if platform.id == "twitter" {
+                try oauthManager.removeTwitterOAuth1Credentials()
+                credentialStatus["twitter"] = false
+            } else {
+                try oauthManager.removeTokens(for: platform.id)
+            }
             connectionStatus[platform.id] = .disconnected
             
             if platform.id == "facebook" {
@@ -246,6 +330,38 @@ struct PlatformSettingsView: View {
             }
         } catch {
             errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func testTwitterPost() async {
+        twitterTesting = true
+        defer { twitterTesting = false }
+        
+        do {
+            let connector = TwitterConnector()
+            _ = await connector.isConfigured  // loads signer
+            
+            // Try image post if test graphic is available, otherwise text-only
+            let caption = "📖 The Book of Wisdom — a curated collection of proverbs for the modern age.\n\n🔗 https://wisdombook.life\n\n#Wisdom #BookOfWisdom #Proverbs"
+            
+            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
+               let image = NSImage(contentsOfFile: imagePath) {
+                let link = URL(string: "https://wisdombook.life")!
+                let result = try await connector.post(image: image, caption: "", link: link)
+                if result.success {
+                    successMessage = "Image posted to X! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
+            } else {
+                let result = try await connector.postText(caption)
+                if result.success {
+                    successMessage = "Posted to X! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
+            }
+        } catch {
+            errorMessage = "X post failed: \(error.localizedDescription)"
             showingError = true
         }
     }
@@ -286,6 +402,38 @@ struct PlatformSettingsView: View {
             }
         } catch {
             errorMessage = "LinkedIn post failed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+    
+    // MARK: - Facebook Test Post
+    
+    private func testFacebookPost() async {
+        facebookTesting = true
+        defer { facebookTesting = false }
+        
+        let testText = """
+        📖 The Book of Wisdom — a curated collection of proverbs for the modern age.
+
+        🔗 https://wisdombook.life
+
+        #Wisdom #BookOfWisdom #Proverbs
+        """
+        
+        do {
+            let connector = FacebookConnector()
+            guard await connector.isConfigured else {
+                errorMessage = "Facebook Page not configured. Try disconnecting and reconnecting Facebook."
+                showingError = true
+                return
+            }
+            let result = try await connector.postText(testText)
+            if result.success {
+                successMessage = "Posted to Facebook! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                showingSuccess = true
+            }
+        } catch {
+            errorMessage = "Facebook post failed: \(error.localizedDescription)"
             showingError = true
         }
     }
@@ -503,6 +651,82 @@ struct CredentialsInputSheet: View {
         }
         .padding(24)
         .frame(width: 400, height: 280)
+    }
+}
+
+// MARK: - Twitter Credentials Input Sheet (OAuth 1.0a - 4 Keys)
+
+struct TwitterCredentialsInputSheet: View {
+    let onSave: (String, String, String, String) -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var consumerKey = ""
+    @State private var consumerSecret = ""
+    @State private var accessToken = ""
+    @State private var accessTokenSecret = ""
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Setup X (Twitter)")
+                .font(.title2)
+                .fontWeight(.semibold)
+            
+            Text("Enter your OAuth 1.0a credentials from the X Developer Portal.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("API Key (Consumer Key)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("Enter API Key", text: $consumerKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("API Secret (Consumer Secret)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    SecureField("Enter API Secret", text: $consumerSecret)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Access Token")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("Enter Access Token", text: $accessToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Access Token Secret")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    SecureField("Enter Access Token Secret", text: $accessTokenSecret)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            
+            Spacer()
+            
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button("Save & Connect") {
+                    onSave(consumerKey, consumerSecret, accessToken, accessTokenSecret)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(consumerKey.isEmpty || consumerSecret.isEmpty || accessToken.isEmpty || accessTokenSecret.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 420, height: 420)
     }
 }
 
