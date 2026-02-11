@@ -52,6 +52,8 @@ Quick reference for obtaining API access for each V1 platform.
 
 **Graph API Version**: v24.0
 
+**Required Scopes**: `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`, `business_management`
+
 **Redirect Flow**: Uses localhost HTTP server (same as LinkedIn) — the app starts a temporary server on port 8989 to receive the OAuth callback.
 
 ---

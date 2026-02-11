@@ -82,6 +82,19 @@ final class OAuthManager: NSObject, ObservableObject {
             )
         }
         
+        static func instagram(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "instagram",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://www.facebook.com/v24.0/dialog/oauth")!,
+                tokenURL: URL(string: "https://graph.facebook.com/v24.0/oauth/access_token")!,
+                redirectURI: "http://localhost:8989/oauth/callback",
+                scopes: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement", "business_management"],
+                usePKCE: false
+            )
+        }
+        
         static func pinterest(clientID: String, clientSecret: String) -> OAuthConfig {
             OAuthConfig(
                 platformID: "pinterest",
@@ -167,6 +180,11 @@ final class OAuthManager: NSObject, ObservableObject {
                 throw OAuthError.missingCredentials("Facebook requires App Secret")
             }
             return .facebook(clientID: creds.clientID, clientSecret: secret)
+        case "instagram":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("Instagram requires App Secret")
+            }
+            return .instagram(clientID: creds.clientID, clientSecret: secret)
         case "pinterest":
             guard let secret = creds.clientSecret else {
                 throw OAuthError.missingCredentials("Pinterest requires App Secret")

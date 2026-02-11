@@ -242,32 +242,128 @@ final class InstagramConnector: PlatformConnector {
     private var accessToken: String?
     private var businessAccountID: String?
     
+    struct InstagramCredentials: Codable {
+        let businessAccountID: String
+        let pageName: String
+    }
+    
     var isConfigured: Bool {
         get async {
+            // First try loading cached credentials
+            if let cached = try? KeychainService.shared.load(InstagramCredentials.self, for: "instagram_business") {
+                businessAccountID = cached.businessAccountID
+            }
+            
             do {
-                let tokens = try OAuthManager.shared.getTokens(for: "facebook") // Instagram uses Facebook auth
+                let tokens = try OAuthManager.shared.getTokens(for: "instagram")
                 accessToken = tokens.accessToken
-                // Business account ID should be stored separately after initial setup
-                return accessToken != nil
+                return accessToken != nil && businessAccountID != nil
             } catch {
                 return false
             }
         }
     }
     
+    func authenticate() async throws {
+        let config = try OAuthManager.shared.getConfig(for: "instagram")
+        let tokens = try await OAuthManager.shared.authenticate(
+            platform: "instagram",
+            config: config
+        )
+        try OAuthManager.shared.saveTokens(tokens, for: "instagram")
+        accessToken = tokens.accessToken
+        
+        // Discover the Instagram Business Account ID
+        try await fetchInstagramBusinessAccountID(userToken: tokens.accessToken)
+    }
+    
+    private func fetchInstagramBusinessAccountID(userToken: String) async throws {
+        // Step 1: Get Pages (similar to Facebook flow)
+        let pagesURL = URL(string: "https://graph.facebook.com/v24.0/me/accounts?access_token=\(userToken)")!
+        let (pagesData, pagesResponse) = try await URLSession.shared.data(from: pagesURL)
+        
+        guard let httpResponse = pagesResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: pagesData, encoding: .utf8) ?? "Unknown error"
+            logger.error("Failed to fetch pages for Instagram: \(errorBody)")
+            throw PlatformError.postFailed("Failed to fetch pages for Instagram: \(errorBody)")
+        }
+        
+        struct PagesResponse: Decodable {
+            struct Page: Decodable {
+                let id: String
+                let name: String
+                let access_token: String
+            }
+            let data: [Page]
+        }
+        
+        let pagesResult = try JSONDecoder().decode(PagesResponse.self, from: pagesData)
+        
+        guard let page = pagesResult.data.first else {
+            throw PlatformError.postFailed("No Facebook Pages found. Instagram Business accounts must be linked to a Facebook Page.")
+        }
+        
+        // Use the first page or find "The Book of Wisdom"
+        let targetPage = pagesResult.data.first(where: {
+            $0.name.localizedCaseInsensitiveContains("wisdom") ||
+            $0.name.localizedCaseInsensitiveContains("book")
+        }) ?? page
+        
+        // Step 2: Get the Instagram Business Account ID from the Page
+        let igURL = URL(string: "https://graph.facebook.com/v24.0/\(targetPage.id)?fields=instagram_business_account&access_token=\(targetPage.access_token)")!
+        let (igData, igResponse) = try await URLSession.shared.data(from: igURL)
+        
+        guard let igHttp = igResponse as? HTTPURLResponse, igHttp.statusCode == 200 else {
+            let errorBody = String(data: igData, encoding: .utf8) ?? "Unknown error"
+            logger.error("Failed to get Instagram Business Account: \(errorBody)")
+            throw PlatformError.postFailed("Failed to get Instagram Business Account: \(errorBody)")
+        }
+        
+        struct IGAccountResponse: Decodable {
+            struct IGAccount: Decodable {
+                let id: String
+            }
+            let instagram_business_account: IGAccount?
+        }
+        
+        let igResult = try JSONDecoder().decode(IGAccountResponse.self, from: igData)
+        
+        guard let igAccount = igResult.instagram_business_account else {
+            throw PlatformError.postFailed("No Instagram Business Account linked to '\(targetPage.name)'. Go to your Facebook Page Settings → Instagram and connect your Instagram account.")
+        }
+        
+        businessAccountID = igAccount.id
+        
+        // Also store the page access token for Instagram API calls
+        // Instagram Content Publishing API uses the Page Access Token
+        let igTokens = OAuthManager.OAuthTokens(
+            accessToken: targetPage.access_token,
+            refreshToken: nil,
+            expiresAt: nil,
+            tokenType: "bearer",
+            idToken: nil
+        )
+        try OAuthManager.shared.saveTokens(igTokens, for: "instagram")
+        accessToken = targetPage.access_token
+        
+        // Persist business account ID
+        let creds = InstagramCredentials(
+            businessAccountID: igAccount.id,
+            pageName: targetPage.name
+        )
+        try KeychainService.shared.save(creds, for: "instagram_business")
+        
+        logger.info("Instagram Business Account connected: \(igAccount.id) (via page: \(targetPage.name))")
+    }
+    
     func configure(businessAccountID: String) {
         self.businessAccountID = businessAccountID
     }
     
-    func authenticate() async throws {
-        // Instagram uses Facebook OAuth
-        let config = try OAuthManager.shared.getConfig(for: "facebook")
-        let tokens = try await OAuthManager.shared.authenticate(
-            platform: "facebook",
-            config: config
-        )
-        try OAuthManager.shared.saveTokens(tokens, for: "facebook")
-        accessToken = tokens.accessToken
+    func postText(_ text: String) async throws -> PostResult {
+        // Instagram doesn't support text-only posts, but we can post a link card
+        // For now, return an error directing users to post with an image
+        throw PlatformError.postFailed("Instagram requires an image. Please use the image post feature.")
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
@@ -276,18 +372,15 @@ final class InstagramConnector: PlatformConnector {
         }
         
         // Instagram requires image to be hosted at a public URL
-        // For now, we'll use the image upload approach
         guard let imageData = image.jpegData() else {
             throw PlatformError.postFailed("Failed to convert image to JPEG")
         }
         
-        // Step 1: Create media container (Instagram requires hosted image URL)
-        // Note: In production, you'd upload to a CDN first
         let igCaption = "\(caption)\n\n📖 Read more at wisdombook.life (link in bio)"
         
         // Step 1: Create container with image URL
         let containerID = try await createMediaContainer(
-            imageURL: "https://wisdombook.life/temp-image.jpg", // Placeholder - needs CDN
+            imageURL: link.absoluteString,
             caption: igCaption,
             accountID: accountID,
             token: token
@@ -307,7 +400,7 @@ final class InstagramConnector: PlatformConnector {
     }
     
     private func createMediaContainer(imageURL: String, caption: String, accountID: String, token: String) async throws -> String {
-        var components = URLComponents(string: "https://graph.facebook.com/v19.0/\(accountID)/media")!
+        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media")!
         components.queryItems = [
             URLQueryItem(name: "image_url", value: imageURL),
             URLQueryItem(name: "caption", value: caption),
@@ -333,7 +426,7 @@ final class InstagramConnector: PlatformConnector {
     }
     
     private func publishContainer(containerID: String, accountID: String, token: String) async throws -> String {
-        var components = URLComponents(string: "https://graph.facebook.com/v19.0/\(accountID)/media_publish")!
+        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media_publish")!
         components.queryItems = [
             URLQueryItem(name: "creation_id", value: containerID),
             URLQueryItem(name: "access_token", value: token)

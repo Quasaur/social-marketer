@@ -412,12 +412,16 @@ struct PlatformSettingsView: View {
         facebookTesting = true
         defer { facebookTesting = false }
         
-        let testText = """
-        📖 The Book of Wisdom — a curated collection of proverbs for the modern age.
+        let introText = """
+        Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.
 
-        🔗 https://wisdombook.life
+        In 2015 I published The Book of Tweets: Proverbs for the Modern Age on Amazon Kindle. In it I placed well over 600 proverbs, maxims and adages.
 
-        #Wisdom #BookOfWisdom #Proverbs
+        Since that time I have posted another 300 adages on 19 social media platforms in an effort to communicate with the world the critical importance of Biblical Wisdom to our mental health, fortune and survival.
+
+        Now, in the latter days of my earthly journey, I am consolidating all of my work in a single Neo4j AURADB graph database which can be enjoyed by everyone free-of-charge through my new website The Book of Wisdom:
+
+        https://www.wisdombook.life
         """
         
         do {
@@ -427,10 +431,22 @@ struct PlatformSettingsView: View {
                 showingError = true
                 return
             }
-            let result = try await connector.postText(testText)
-            if result.success {
-                successMessage = "Posted to Facebook! 🎉\n\(result.postURL?.absoluteString ?? "")"
-                showingSuccess = true
+            
+            // Post with intro graphic if available, otherwise text-only
+            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
+               let image = NSImage(contentsOfFile: imagePath) {
+                let link = URL(string: "https://www.wisdombook.life")!
+                let result = try await connector.post(image: image, caption: introText, link: link)
+                if result.success {
+                    successMessage = "Intro posted to Facebook with graphic! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
+            } else {
+                let result = try await connector.postText(introText)
+                if result.success {
+                    successMessage = "Intro posted to Facebook! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
             }
         } catch {
             errorMessage = "Facebook post failed: \(error.localizedDescription)"
