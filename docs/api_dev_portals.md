@@ -60,39 +60,38 @@ Quick reference for obtaining API access for each V1 platform.
 
 ## Instagram
 
-**Portal**: Same Meta app at <https://developers.facebook.com> → Use Cases → **Instagram API**
+**Portal**: Same Meta app at <https://developers.facebook.com> → Use Cases
 
-**Key Discovery**: Instagram has its **own separate App ID & Secret**, distinct from the Facebook App credentials.
+> ⚠️ **Key Discovery**: Although Instagram has its own App ID/Secret in the portal, in practice you should use the **same Facebook App credentials** for Instagram. The Instagram permissions are added as a use case on the same Facebook app.
 
 | Field | Value |
-|:------|:------|
-| Instagram app name | Social Marketer-IG |
-| Instagram app ID | `924177070063303` |
-| Instagram app secret | *(stored in Keychain)* |
+| :---- | :---- |
+| App ID | Same as Facebook App ID |
+| App Secret | Same as Facebook App Secret |
 
 **Setup Process**:
 
-1. In the same Meta app, go to Use Cases → Add **Instagram Content Publishing**
-2. Add required permissions:
+1. In the Facebook app on developers.facebook.com, go to Use Cases → Add **"Manage message & content on Instagram"**
+2. Under Permissions & Features, add:
    - `instagram_basic` — read Instagram Business Account info
-   - `instagram_content_publish` — publish photos and videos
+   - `instagram_content_publish` — **critical**: publish photos and videos
    - `pages_show_list` — list pages linked to the user
    - `pages_read_engagement` — read page engagement data
    - `business_management` — ⚠️ required for Business Suite pages
-3. Enter Instagram **App ID** and **App Secret** in Social Marketer's Setup dialog
+3. In Social Marketer: Setup Instagram → enter the **same App ID and App Secret** as Facebook
+4. Click Connect → during OAuth, **select your Business** when prompted
 
 **Required Scopes**: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`
 
 **Auto-Discovery**: After OAuth, the app automatically:
 
 1. Calls `/me/accounts` to find the Facebook Page
-2. Queries the Page's `instagram_business_account` edge to get the Instagram Business Account ID
+2. Queries the Page's `instagram_business_account` edge to get the IG Business Account ID
 3. Stores the Page Access Token and Business Account ID in Keychain
 
+**Image Hosting**: Instagram API requires images at a public URL. The app handles this by uploading images to the Facebook Page as **unpublished photos** (hidden from feed) to get a Facebook CDN URL, then passes that URL to Instagram's container creation API.
+
 **Redirect Flow**: Uses localhost HTTP server (port 8989), same as Facebook and LinkedIn.
-4. Generate access tokens → Add your Instagram account (assign **Instagram Tester** role in Roles tab first)
-5. Optionally set up **Instagram business login** (step 4 in the portal)
-6. Submit for **App review** before accessing live data
 
 ---
 
