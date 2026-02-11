@@ -250,7 +250,7 @@ final class InstagramConnector: PlatformConnector {
     var isConfigured: Bool {
         get async {
             // First try loading cached credentials
-            if let cached = try? KeychainService.shared.load(InstagramCredentials.self, for: "instagram_business") {
+            if let cached = try? KeychainService.shared.retrieve(InstagramCredentials.self, for: "instagram_business") {
                 businessAccountID = cached.businessAccountID
             }
             
@@ -341,6 +341,7 @@ final class InstagramConnector: PlatformConnector {
             refreshToken: nil,
             expiresAt: nil,
             tokenType: "bearer",
+            scope: nil,
             idToken: nil
         )
         try OAuthManager.shared.saveTokens(igTokens, for: "instagram")

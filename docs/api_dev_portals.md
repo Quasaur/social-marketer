@@ -72,12 +72,24 @@ Quick reference for obtaining API access for each V1 platform.
 
 **Setup Process**:
 
-1. In the same Meta app, go to Use Cases → Add **Instagram API**
-2. Choose **API setup with Instagram login**
-3. Required permissions:
-   - `instagram_business_basic`
-   - `instagram_manage_comments`
-   - `instagram_business_manage_messages`
+1. In the same Meta app, go to Use Cases → Add **Instagram Content Publishing**
+2. Add required permissions:
+   - `instagram_basic` — read Instagram Business Account info
+   - `instagram_content_publish` — publish photos and videos
+   - `pages_show_list` — list pages linked to the user
+   - `pages_read_engagement` — read page engagement data
+   - `business_management` — ⚠️ required for Business Suite pages
+3. Enter Instagram **App ID** and **App Secret** in Social Marketer's Setup dialog
+
+**Required Scopes**: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`, `business_management`
+
+**Auto-Discovery**: After OAuth, the app automatically:
+
+1. Calls `/me/accounts` to find the Facebook Page
+2. Queries the Page's `instagram_business_account` edge to get the Instagram Business Account ID
+3. Stores the Page Access Token and Business Account ID in Keychain
+
+**Redirect Flow**: Uses localhost HTTP server (port 8989), same as Facebook and LinkedIn.
 4. Generate access tokens → Add your Instagram account (assign **Instagram Tester** role in Roles tab first)
 5. Optionally set up **Instagram business login** (step 4 in the portal)
 6. Submit for **App review** before accessing live data

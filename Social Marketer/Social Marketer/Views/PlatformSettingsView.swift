@@ -35,6 +35,9 @@ struct PlatformSettingsView: View {
     @State private var facebookTesting = false
     @State private var facebookPageName: String?
     
+    // Instagram test state
+    @State private var instagramTesting = false
+    
     enum ConnectionState {
         case disconnected
         case connecting
@@ -59,7 +62,7 @@ struct PlatformSettingsView: View {
         PlatformInfo(id: "facebook", name: "Facebook", icon: "person.3", color: .indigo,
                      requiresSecret: true, clientIDLabel: "App ID", clientSecretLabel: "App Secret"),
         PlatformInfo(id: "instagram", name: "Instagram", icon: "camera", color: .purple,
-                     requiresSecret: false, clientIDLabel: "Uses Facebook", clientSecretLabel: nil),
+                     requiresSecret: true, clientIDLabel: "Instagram App ID", clientSecretLabel: "Instagram App Secret"),
         PlatformInfo(id: "pinterest", name: "Pinterest", icon: "pin", color: .red,
                      requiresSecret: true, clientIDLabel: "App ID", clientSecretLabel: "App Secret")
     ]
@@ -197,12 +200,6 @@ struct PlatformSettingsView: View {
             }
         }
         
-        // Instagram inherits from Facebook
-        credentialStatus["instagram"] = credentialStatus["facebook"]
-        if connectionStatus["facebook"] == .connected {
-            connectionStatus["instagram"] = .connected
-        }
-        
         // Google Search Console
         gscConfigured = googleIndexing.isConfigured
         gscEmail = googleIndexing.serviceAccountEmail
@@ -236,6 +233,15 @@ struct PlatformSettingsView: View {
                 .controlSize(.small)
                 .disabled(facebookTesting)
             )
+        } else if platform.id == "instagram" && connectionStatus["instagram"] == .connected {
+            return AnyView(
+                Button(instagramTesting ? "Posting..." : "Test Post") {
+                    Task { await testInstagramPost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(instagramTesting)
+            )
         }
         return nil
     }
@@ -253,10 +259,7 @@ struct PlatformSettingsView: View {
             try oauthManager.saveAPICredentials(creds, for: platform.id)
             credentialStatus[platform.id] = true
             
-            // Facebook credentials also enable Instagram
-            if platform.id == "facebook" {
-                credentialStatus["instagram"] = true
-            }
+
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -287,27 +290,24 @@ struct PlatformSettingsView: View {
             return
         }
         
-        // Instagram uses Facebook auth
-        let targetID = platform.id == "instagram" ? "facebook" : platform.id
-        
         connectionStatus[platform.id] = .connecting
         
         do {
-            if targetID == "facebook" {
+            if platform.id == "facebook" {
                 // Facebook needs its own flow to also fetch Page Access Token
                 let connector = FacebookConnector()
                 try await connector.authenticate()
+            } else if platform.id == "instagram" {
+                // Instagram needs its own flow to discover Business Account ID
+                let connector = InstagramConnector()
+                try await connector.authenticate()
             } else {
-                let config = try oauthManager.getConfig(for: targetID)
-                let tokens = try await oauthManager.authenticate(platform: targetID, config: config)
-                try oauthManager.saveTokens(tokens, for: targetID)
+                let config = try oauthManager.getConfig(for: platform.id)
+                let tokens = try await oauthManager.authenticate(platform: platform.id, config: config)
+                try oauthManager.saveTokens(tokens, for: platform.id)
             }
             
             connectionStatus[platform.id] = .connected
-            
-            if targetID == "facebook" {
-                connectionStatus["instagram"] = .connected
-            }
         } catch {
             connectionStatus[platform.id] = .disconnected
             errorMessage = error.localizedDescription
@@ -324,10 +324,6 @@ struct PlatformSettingsView: View {
                 try oauthManager.removeTokens(for: platform.id)
             }
             connectionStatus[platform.id] = .disconnected
-            
-            if platform.id == "facebook" {
-                connectionStatus["instagram"] = .disconnected
-            }
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -454,6 +450,48 @@ struct PlatformSettingsView: View {
         }
     }
     
+    // MARK: - Instagram Test Post
+    
+    private func testInstagramPost() async {
+        instagramTesting = true
+        defer { instagramTesting = false }
+        
+        do {
+            let connector = InstagramConnector()
+            guard await connector.isConfigured else {
+                errorMessage = "Instagram not configured. Try disconnecting and reconnecting."
+                showingError = true
+                return
+            }
+            
+            let introCaption = """
+            📖 The Book of Wisdom — a curated collection of proverbs for the modern age.
+
+            Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.
+
+            Now I am consolidating all of my work in a single graph database which can be enjoyed by everyone free-of-charge through my new website.
+
+            #Wisdom #BookOfWisdom #Proverbs #BibleWisdom #WisdomBook
+            """
+            
+            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
+               let image = NSImage(contentsOfFile: imagePath) {
+                let link = URL(string: "https://www.wisdombook.life")!
+                let result = try await connector.post(image: image, caption: introCaption, link: link)
+                if result.success {
+                    successMessage = "Posted to Instagram! 🎉\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
+            } else {
+                errorMessage = "Could not load intro graphic for Instagram post."
+                showingError = true
+            }
+        } catch {
+            errorMessage = "Instagram post failed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+    
     // MARK: - Google Search Console
     
     private func handleGSCKeyImport(_ result: Result<[URL], Error>) {
@@ -545,17 +583,7 @@ struct PlatformConnectionRow: View {
             Spacer()
             
             // Actions
-            if platform.id == "instagram" {
-                // Instagram just shows status, no setup needed
-                if state == .connected {
-                    Button("Disconnect") { onDisconnect() }
-                        .buttonStyle(.bordered)
-                } else {
-                    Text("via Facebook")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            } else if !hasCredentials {
+            if !hasCredentials {
                 Button("Setup") { onSetup() }
                     .buttonStyle(.borderedProminent)
             } else {
@@ -588,9 +616,6 @@ struct PlatformConnectionRow: View {
     }
     
     private var statusText: String {
-        if platform.id == "instagram" {
-            return state == .connected ? "Connected" : "Connects via Facebook"
-        }
         if !hasCredentials { return "Setup required" }
         switch state {
         case .disconnected: return "Ready to connect"
@@ -600,7 +625,7 @@ struct PlatformConnectionRow: View {
     }
     
     private var statusColor: Color {
-        if !hasCredentials && platform.id != "instagram" { return .orange }
+        if !hasCredentials { return .orange }
         switch state {
         case .disconnected: return .secondary
         case .connecting: return .orange
