@@ -1033,14 +1033,26 @@ final class FacebookConnector: PlatformConnector {
 
 // MARK: - Pinterest Connector
 
+struct PinterestCredentials: Codable {
+    let boardID: String
+    let boardName: String
+}
+
 final class PinterestConnector: PlatformConnector {
     let platformName = "Pinterest"
     private let logger = Logger(subsystem: "com.wisdombook.SocialMarketer", category: "Pinterest")
     private var accessToken: String?
     private var boardID: String?
+    private var boardName: String?
     
     var isConfigured: Bool {
         get async {
+            // Load cached credentials
+            if let cached = try? KeychainService.shared.retrieve(PinterestCredentials.self, for: "pinterest_board") {
+                boardID = cached.boardID
+                boardName = cached.boardName
+            }
+            
             do {
                 let tokens = try OAuthManager.shared.getTokens(for: "pinterest")
                 accessToken = tokens.accessToken
@@ -1051,10 +1063,6 @@ final class PinterestConnector: PlatformConnector {
         }
     }
     
-    func configure(boardID: String) {
-        self.boardID = boardID
-    }
-    
     func authenticate() async throws {
         let config = try OAuthManager.shared.getConfig(for: "pinterest")
         let tokens = try await OAuthManager.shared.authenticate(
@@ -1063,6 +1071,9 @@ final class PinterestConnector: PlatformConnector {
         )
         try OAuthManager.shared.saveTokens(tokens, for: "pinterest")
         accessToken = tokens.accessToken
+        
+        // Auto-discover the user's first board
+        try await fetchFirstBoard(token: tokens.accessToken)
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
@@ -1074,12 +1085,11 @@ final class PinterestConnector: PlatformConnector {
             throw PlatformError.postFailed("Failed to convert image to JPEG")
         }
         
-        // Step 1: Upload media
-        let mediaID = try await uploadMedia(imageData: imageData, token: token)
+        // Pinterest v5 API supports inline base64 image in pin creation
+        let base64Image = imageData.base64EncodedString()
         
-        // Step 2: Create pin
-        let pin = try await createPin(
-            mediaID: mediaID,
+        let pin = try await createPinWithImage(
+            base64Image: base64Image,
             boardID: board,
             title: String(caption.prefix(100)), // Pinterest title limit
             description: caption,
@@ -1097,38 +1107,49 @@ final class PinterestConnector: PlatformConnector {
         )
     }
     
-    private func uploadMedia(imageData: Data, token: String) async throws -> String {
-        let url = URL(string: "https://api.pinterest.com/v5/media")!
+    // MARK: - Board Discovery
+    
+    private func fetchFirstBoard(token: String) async throws {
+        let url = URL(string: "https://api.pinterest.com/v5/boards")!
         
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let base64Image = imageData.base64EncodedString()
-        let payload: [String: Any] = [
-            "media_type": "image",
-            "media": base64Image
-        ]
-        
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Media upload failed: \(errorBody)")
+            logger.error("Failed to fetch boards: \(errorBody)")
+            throw PlatformError.postFailed("Failed to fetch Pinterest boards: \(errorBody)")
         }
         
-        struct MediaResponse: Decodable {
-            let media_id: String
+        struct BoardsResponse: Decodable {
+            struct Board: Decodable {
+                let id: String
+                let name: String
+            }
+            let items: [Board]
         }
         
-        let mediaResponse = try JSONDecoder().decode(MediaResponse.self, from: data)
-        return mediaResponse.media_id
+        let boardsResponse = try JSONDecoder().decode(BoardsResponse.self, from: data)
+        
+        guard let firstBoard = boardsResponse.items.first else {
+            throw PlatformError.postFailed("No Pinterest boards found. Create a board on Pinterest first.")
+        }
+        
+        boardID = firstBoard.id
+        boardName = firstBoard.name
+        
+        // Persist to Keychain
+        let creds = PinterestCredentials(boardID: firstBoard.id, boardName: firstBoard.name)
+        try KeychainService.shared.save(creds, for: "pinterest_board")
+        
+        logger.info("Pinterest board connected: \(firstBoard.name) (ID: \(firstBoard.id))")
     }
     
-    private func createPin(mediaID: String, boardID: String, title: String, description: String, link: URL, token: String) async throws -> (id: String, url: String?) {
+    // MARK: - Pin Creation
+    
+    private func createPinWithImage(base64Image: String, boardID: String, title: String, description: String, link: URL, token: String) async throws -> (id: String, url: String?) {
         let url = URL(string: "https://api.pinterest.com/v5/pins")!
         
         var request = URLRequest(url: url)
@@ -1139,8 +1160,9 @@ final class PinterestConnector: PlatformConnector {
         let payload: [String: Any] = [
             "board_id": boardID,
             "media_source": [
-                "source_type": "media_id",
-                "media_id": mediaID
+                "source_type": "image_base64",
+                "content_type": "image/jpeg",
+                "data": base64Image
             ],
             "title": title,
             "description": description,

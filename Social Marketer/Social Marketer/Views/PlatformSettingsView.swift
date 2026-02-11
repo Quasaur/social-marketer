@@ -38,6 +38,9 @@ struct PlatformSettingsView: View {
     // Instagram test state
     @State private var instagramTesting = false
     
+    // Pinterest test state
+    @State private var pinterestTesting = false
+    
     enum ConnectionState {
         case disconnected
         case connecting
@@ -241,6 +244,15 @@ struct PlatformSettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(instagramTesting)
+            )
+        } else if platform.id == "pinterest" && connectionStatus["pinterest"] == .connected {
+            return AnyView(
+                Button(pinterestTesting ? "Posting..." : "Test Pin") {
+                    Task { await testPinterestPost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(pinterestTesting)
             )
         }
         return nil
@@ -488,6 +500,48 @@ struct PlatformSettingsView: View {
             }
         } catch {
             errorMessage = "Instagram post failed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+    
+    // MARK: - Pinterest Test Post
+    
+    private func testPinterestPost() async {
+        pinterestTesting = true
+        defer { pinterestTesting = false }
+        
+        do {
+            let connector = PinterestConnector()
+            guard await connector.isConfigured else {
+                errorMessage = "Pinterest not configured. Try disconnecting and reconnecting."
+                showingError = true
+                return
+            }
+            
+            let caption = """
+            📖 The Book of Wisdom — a curated collection of proverbs for the modern age.
+
+            Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.
+
+            Now I am consolidating all of my work in a single graph database which can be enjoyed by everyone free-of-charge through my new website.
+
+            #Wisdom #BookOfWisdom #Proverbs #BibleWisdom #WisdomBook
+            """
+            
+            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
+               let image = NSImage(contentsOfFile: imagePath) {
+                let link = URL(string: "https://www.wisdombook.life")!
+                let result = try await connector.post(image: image, caption: caption, link: link)
+                if result.success {
+                    successMessage = "Pinned to Pinterest! 📌\n\(result.postURL?.absoluteString ?? "")"
+                    showingSuccess = true
+                }
+            } else {
+                errorMessage = "Could not load intro graphic for Pinterest pin."
+                showingError = true
+            }
+        } catch {
+            errorMessage = "Pinterest pin failed: \(error.localizedDescription)"
             showingError = true
         }
     }

@@ -102,7 +102,7 @@ final class OAuthManager: NSObject, ObservableObject {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.pinterest.com/oauth/")!,
                 tokenURL: URL(string: "https://api.pinterest.com/v5/oauth/token")!,
-                redirectURI: "socialmarketer://oauth/callback",
+                redirectURI: "http://localhost:8989/oauth/callback",
                 scopes: ["boards:read", "pins:write"],
                 usePKCE: false
             )
