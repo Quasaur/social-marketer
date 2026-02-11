@@ -22,6 +22,15 @@ struct QueueView: View {
         animation: .default
     ) private var postedPosts: FetchedResults<Post>
     
+    @State private var isPosting = false
+    @State private var postResult: String?
+    @State private var showingResult = false
+    @State private var showingError = false
+    @State private var errorMessage = ""
+    @State private var schedulerInstalled = false
+    
+    private let scheduler = PostScheduler()
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Header
@@ -34,6 +43,44 @@ struct QueueView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)
+            
+            // Action Buttons
+            HStack(spacing: 12) {
+                // Post Now button
+                Button {
+                    Task { await postNow() }
+                } label: {
+                    HStack {
+                        if isPosting {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Posting to all platforms...")
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                            Text("Post Now")
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isPosting)
+                .help("Fetch random wisdom from RSS, generate graphic, and post to all connected platforms")
+                
+                Spacer()
+                
+                // Scheduler toggle
+                HStack(spacing: 8) {
+                    Image(systemName: schedulerInstalled ? "clock.badge.checkmark" : "clock")
+                        .foregroundStyle(schedulerInstalled ? .green : .secondary)
+                    
+                    Toggle("Daily Scheduler", isOn: $schedulerInstalled)
+                        .toggleStyle(.switch)
+                        .onChange(of: schedulerInstalled) { _, newValue in
+                            toggleScheduler(enabled: newValue)
+                        }
+                }
+                .help("Install a macOS Launch Agent to automatically post daily")
+            }
+            .padding(.horizontal)
             
             List {
                 // Pending Section
@@ -74,6 +121,47 @@ struct QueueView: View {
             .listStyle(.inset)
         }
         .padding(.top)
+        .onAppear {
+            schedulerInstalled = scheduler.isLaunchAgentInstalled
+        }
+        .alert("Post Result", isPresented: $showingResult) {
+            Button("OK") {}
+        } message: {
+            Text(postResult ?? "")
+        }
+        .alert("Error", isPresented: $showingError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+    
+    // MARK: - Post Now
+    
+    private func postNow() async {
+        isPosting = true
+        defer { isPosting = false }
+        
+        await scheduler.executeScheduledPost()
+        
+        postResult = "Wisdom posted to all connected platforms! 🎉\nCheck the Posted section below for results."
+        showingResult = true
+    }
+    
+    // MARK: - Scheduler Toggle
+    
+    private func toggleScheduler(enabled: Bool) {
+        do {
+            if enabled {
+                try scheduler.installLaunchAgent()
+            } else {
+                try scheduler.uninstallLaunchAgent()
+            }
+        } catch {
+            errorMessage = "Scheduler error: \(error.localizedDescription)"
+            showingError = true
+            schedulerInstalled = !enabled // revert toggle
+        }
     }
     
     private func deletePosts(at offsets: IndexSet) {
