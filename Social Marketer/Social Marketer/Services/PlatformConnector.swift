@@ -372,16 +372,19 @@ final class InstagramConnector: PlatformConnector {
             throw PlatformError.notConfigured
         }
         
-        // Instagram requires image to be hosted at a public URL
         guard let imageData = image.jpegData() else {
             throw PlatformError.postFailed("Failed to convert image to JPEG")
         }
         
+        // Instagram requires images at a publicly accessible URL.
+        // Upload to Facebook Page as an unpublished photo to get a CDN URL.
+        let publicImageURL = try await uploadImageToFacebookCDN(imageData: imageData, token: token)
+        
         let igCaption = "\(caption)\n\n📖 Read more at wisdombook.life (link in bio)"
         
-        // Step 1: Create container with image URL
+        // Step 1: Create container with public image URL
         let containerID = try await createMediaContainer(
-            imageURL: link.absoluteString,
+            imageURL: publicImageURL,
             caption: igCaption,
             accountID: accountID,
             token: token
@@ -398,6 +401,88 @@ final class InstagramConnector: PlatformConnector {
             postURL: URL(string: "https://instagram.com/p/\(mediaID)"),
             error: nil
         )
+    }
+    
+    /// Upload image to Facebook Page as an unpublished photo to get a public CDN URL for Instagram
+    private func uploadImageToFacebookCDN(imageData: Data, token: String) async throws -> String {
+        // Load Facebook Page credentials (we need the Page ID and Page Access Token)
+        let pageCreds: FacebookPageCredentials
+        do {
+            pageCreds = try KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page")
+        } catch {
+            throw PlatformError.postFailed("Facebook Page not configured. Connect Facebook first to enable Instagram image hosting.")
+        }
+        
+        // Upload as unpublished photo to Facebook Page
+        let url = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/photos")!
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        
+        // Access token
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"access_token\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(pageCreds.pageAccessToken)\r\n".data(using: .utf8)!)
+        
+        // Published = false (don't show on page feed)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"published\"\r\n\r\n".data(using: .utf8)!)
+        body.append("false\r\n".data(using: .utf8)!)
+        
+        // Image data
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"source\"; filename=\"instagram_image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        
+        request.httpBody = body
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw PlatformError.postFailed("Facebook image upload failed: \(errorBody)")
+        }
+        
+        struct PhotoResponse: Decodable {
+            let id: String
+        }
+        
+        let photoResponse = try JSONDecoder().decode(PhotoResponse.self, from: data)
+        
+        // Now get the CDN source URL of the uploaded photo
+        let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(photoResponse.id)?fields=images&access_token=\(pageCreds.pageAccessToken)")!
+        let (sourceData, sourceResponse) = try await URLSession.shared.data(from: sourceURL)
+        
+        guard let sourceHttp = sourceResponse as? HTTPURLResponse, sourceHttp.statusCode == 200 else {
+            let errorBody = String(data: sourceData, encoding: .utf8) ?? "Unknown error"
+            throw PlatformError.postFailed("Failed to get image URL: \(errorBody)")
+        }
+        
+        struct ImageResponse: Decodable {
+            struct Image: Decodable {
+                let source: String
+                let width: Int
+                let height: Int
+            }
+            let images: [Image]
+        }
+        
+        let imageResponse = try JSONDecoder().decode(ImageResponse.self, from: sourceData)
+        
+        // Use the largest image (first in the array)
+        guard let cdnURL = imageResponse.images.first?.source else {
+            throw PlatformError.postFailed("No image URL returned from Facebook")
+        }
+        
+        logger.info("Image uploaded to Facebook CDN: \(cdnURL.prefix(80))...")
+        return cdnURL
     }
     
     private func createMediaContainer(imageURL: String, caption: String, accountID: String, token: String) async throws -> String {
