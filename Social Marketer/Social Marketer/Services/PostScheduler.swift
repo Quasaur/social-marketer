@@ -56,16 +56,46 @@ final class PostScheduler {
             try fileManager.createDirectory(at: Self.launchAgentsURL, withIntermediateDirectories: true)
         }
         
-        // Get the bundled plist
-        guard let bundledPlistURL = Bundle.main.url(forResource: "com.wisdombook.SocialMarketer", withExtension: "plist") else {
+        // Get the actual executable path from the running app
+        guard let executableURL = Bundle.main.executableURL else {
             throw SchedulerError.plistNotFound
         }
         
-        // Copy to LaunchAgents
+        // Build plist dictionary with the actual app path
+        let plistDict: [String: Any] = [
+            "Label": Self.launchdLabel,
+            "ProgramArguments": [executableURL.path, "--scheduled-post"],
+            "StartCalendarInterval": ["Hour": 9, "Minute": 0],
+            "RunAtLoad": false,
+            "KeepAlive": false,
+            "StandardOutPath": "/tmp/com.wisdombook.SocialMarketer.out.log",
+            "StandardErrorPath": "/tmp/com.wisdombook.SocialMarketer.err.log",
+            "EnvironmentVariables": ["PATH": "/usr/local/bin:/usr/bin:/bin"],
+            "WorkingDirectory": "/tmp",
+            "ProcessType": "Background",
+            "Nice": 10
+        ]
+        
+        // Write the plist
+        let plistData = try PropertyListSerialization.data(
+            fromPropertyList: plistDict,
+            format: .xml,
+            options: 0
+        )
+        
+        // Remove existing if present
         if fileManager.fileExists(atPath: Self.installedPlistURL.path) {
+            // Unload first
+            let unloadProcess = Process()
+            unloadProcess.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            unloadProcess.arguments = ["unload", Self.installedPlistURL.path]
+            try? unloadProcess.run()
+            unloadProcess.waitUntilExit()
+            
             try fileManager.removeItem(at: Self.installedPlistURL)
         }
-        try fileManager.copyItem(at: bundledPlistURL, to: Self.installedPlistURL)
+        
+        try plistData.write(to: Self.installedPlistURL)
         
         // Load the agent
         let process = Process()
@@ -78,7 +108,7 @@ final class PostScheduler {
             throw SchedulerError.launchctlFailed("load")
         }
         
-        logger.info("Launch agent installed and loaded")
+        logger.info("Launch agent installed and loaded from \(executableURL.path)")
     }
     
     /// Uninstall the launch agent

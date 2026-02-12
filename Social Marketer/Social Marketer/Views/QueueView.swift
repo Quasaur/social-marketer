@@ -72,12 +72,8 @@ struct QueueView: View {
                     Image(systemName: schedulerInstalled ? "clock.badge.checkmark" : "clock")
                         .foregroundStyle(schedulerInstalled ? .green : .orange)
                     
-                    Text("Daily Scheduler")
-                        .font(.body)
-                    
                     Toggle("Daily Scheduler", isOn: $schedulerInstalled)
-                        .toggleStyle(.status)
-                        .labelsHidden()
+                        .toggleStyle(.switch)
                         .onChange(of: schedulerInstalled) { _, newValue in
                             toggleScheduler(enabled: newValue)
                         }
