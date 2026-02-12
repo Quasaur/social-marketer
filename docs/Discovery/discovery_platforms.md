@@ -1,7 +1,7 @@
 # Discovery Platforms
 
 **Purpose**: Setup and configuration guide for all Discovery & Indexing platforms used by Social Marketer  
-**Last Updated**: February 11, 2026
+**Last Updated**: February 12, 2026
 
 > These platforms correspond to the three tiers in the app's **Discovery & Indexing** panel.
 
@@ -30,9 +30,10 @@ Curated directories that list wisdombook.life for referral traffic and domain au
 
 ### Curlie (DMOZ)
 
-- **Status**: 🔲 Planned
+- **Status**: ⏳ Submitted (February 12, 2026)
 - **URL**: <https://curlie.org>
-- **Notes**: Open directory project — manual submission
+- **Category**: Society > Religion and Spirituality > Christianity > Christian Living > Devotionals
+- **Notes**: Free, human-edited directory. Awaiting editor review (response time varies).
 
 ### Best of the Web
 
@@ -66,7 +67,7 @@ Feed readers and content platforms that consume wisdombook.life RSS feeds to rea
 
 ### Feedly
 
-- **Status**: 🔲 Setting Up
+- **Status**: ✅ Active (February 12, 2026)
 - **URL**: <https://feedly.com>
 - **Tier**: Free
 - **Role**: Primary RSS aggregator — gets wisdombook.life content in front of Feedly's user base
