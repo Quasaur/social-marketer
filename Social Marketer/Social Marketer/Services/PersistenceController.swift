@@ -56,13 +56,19 @@ final class PersistenceController {
             if let storeURL = Self.sharedStoreURL {
                 container.persistentStoreDescriptions.first?.url = storeURL
                 logger.notice("Core Data store: \(storeURL.path)")
+                print("[PersistenceController] Store path: \(storeURL.path)")
             }
+        }
+        
+        // Enable cross-process change detection (GUI ↔ launchd scheduler)
+        if let description = container.persistentStoreDescriptions.first {
+            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+            description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         }
         
         container.loadPersistentStores { description, error in
             if let error = error {
                 self.logger.error("Core Data load failed: \(error.localizedDescription)")
-                // Log but don't crash - allows app to launch for debugging
                 Log.persistence.error("⚠️ Core Data Error: \(error.localizedDescription)")
                 Task { @MainActor in
                     ErrorLog.shared.log(category: "Persistence", message: "Core Data load failed", detail: error.localizedDescription)
@@ -74,6 +80,18 @@ final class PersistenceController {
         
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        
+        // Observe remote store changes (from launchd process) and refresh the view context
+        NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange,
+            object: container.persistentStoreCoordinator,
+            queue: .main
+        ) { [weak container] _ in
+            guard let context = container?.viewContext else { return }
+            context.perform {
+                context.refreshAllObjects()
+            }
+        }
     }
     
     // MARK: - App Group Support

@@ -66,7 +66,7 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    Link("View Feed", destination: URL(string: "https://wisdombook.life/feed/daily.xml")!)
+                    Link("View Feed", destination: URL(string: "https://www.wisdombook.life/feed/daily.xml")!)
                         .font(.caption)
                 }
                 

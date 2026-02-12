@@ -28,6 +28,12 @@ struct QueueView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var schedulerInstalled = false
+    @State private var scheduledTime: Date = {
+        var components = DateComponents()
+        components.hour = PostScheduler.scheduledHour
+        components.minute = PostScheduler.scheduledMinute
+        return Calendar.current.date(from: components) ?? Date()
+    }()
     
     private let scheduler = PostScheduler()
     
@@ -67,8 +73,8 @@ struct QueueView: View {
                 
                 Spacer()
                 
-                // Scheduler toggle
-                HStack(spacing: 4) {
+                // Scheduler toggle + time picker
+                HStack(spacing: 8) {
                     Image(systemName: schedulerInstalled ? "clock.badge.checkmark" : "clock")
                         .foregroundStyle(schedulerInstalled ? .green : .orange)
                     
@@ -77,8 +83,20 @@ struct QueueView: View {
                         .onChange(of: schedulerInstalled) { _, newValue in
                             toggleScheduler(enabled: newValue)
                         }
+                    
+                    DatePicker("", selection: $scheduledTime, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                        .frame(width: 90)
+                        .onChange(of: scheduledTime) { _, newTime in
+                            let components = Calendar.current.dateComponents([.hour, .minute], from: newTime)
+                            PostScheduler.scheduledHour = components.hour ?? 9
+                            PostScheduler.scheduledMinute = components.minute ?? 0
+                            if schedulerInstalled {
+                                toggleScheduler(enabled: true) // reinstall with new time
+                            }
+                        }
                 }
-                .help("Install a macOS Launch Agent to automatically post daily")
+                .help("Install a macOS Launch Agent to automatically post daily at the selected time")
             }
             .padding(.horizontal)
             

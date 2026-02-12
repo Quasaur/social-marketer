@@ -218,6 +218,7 @@ final class TwitterConnector: PlatformConnector {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             logger.error("Tweet creation failed (\(statusCode)): \(errorBody)")
+            print("[Twitter] Tweet creation failed (\(statusCode)): \(errorBody)")
             throw PlatformError.postFailed("Tweet creation failed (\(statusCode)): \(errorBody)")
         }
         
@@ -390,7 +391,10 @@ final class InstagramConnector: PlatformConnector {
             token: token
         )
         
-        // Step 2: Publish the container
+        // Step 2: Wait for container to be ready (Instagram processes async)
+        try await waitForContainerReady(containerID: containerID, token: token)
+        
+        // Step 3: Publish the container
         let mediaID = try await publishContainer(containerID: containerID, accountID: accountID, token: token)
         
         logger.info("Instagram post published: \(mediaID)")
@@ -500,6 +504,7 @@ final class InstagramConnector: PlatformConnector {
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[Instagram] Container creation failed: \(errorBody)")
             throw PlatformError.postFailed("Container creation failed: \(errorBody)")
         }
         
@@ -525,6 +530,7 @@ final class InstagramConnector: PlatformConnector {
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[Instagram] Publish failed: \(errorBody)")
             throw PlatformError.postFailed("Publish failed: \(errorBody)")
         }
         
@@ -535,9 +541,52 @@ final class InstagramConnector: PlatformConnector {
         let publishResponse = try JSONDecoder().decode(PublishResponse.self, from: data)
         return publishResponse.id
     }
+    
+    /// Poll container status until FINISHED (Instagram processes media asynchronously)
+    private func waitForContainerReady(containerID: String, token: String, maxAttempts: Int = 10) async throws {
+        // Initial wait — container always needs some processing time
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        
+        for attempt in 1...maxAttempts {
+            let status = try await checkContainerStatus(containerID: containerID, token: token)
+            
+            if status == "FINISHED" {
+                // Brief extra delay — Instagram can report FINISHED before truly ready
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                print("[Instagram] Container ready after \(attempt) poll(s)")
+                return
+            } else if status == "ERROR" {
+                throw PlatformError.postFailed("Instagram container processing failed")
+            }
+            
+            // Wait 3 seconds before next poll
+            print("[Instagram] Container status: \(status) (attempt \(attempt)/\(maxAttempts))")
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+        
+        throw PlatformError.postFailed("Instagram container not ready after \(maxAttempts) attempts")
+    }
+    
+    private func checkContainerStatus(containerID: String, token: String) async throws -> String {
+        let url = URL(string: "https://graph.facebook.com/v24.0/\(containerID)?fields=status_code&access_token=\(token)")!
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        
+        struct StatusResponse: Decodable {
+            let status_code: String?
+        }
+        
+        let statusResponse = try JSONDecoder().decode(StatusResponse.self, from: data)
+        return statusResponse.status_code ?? "UNKNOWN"
+    }
 }
 
 // MARK: - LinkedIn Connector
+
+/// Credentials for LinkedIn person identity, stored in Keychain
+struct LinkedInProfileCredentials: Codable {
+    let personURN: String
+}
 
 final class LinkedInConnector: PlatformConnector {
     let platformName = "LinkedIn"
@@ -547,10 +596,38 @@ final class LinkedInConnector: PlatformConnector {
     
     var isConfigured: Bool {
         get async {
+            // Load person URN from Keychain
+            if personURN == nil {
+                if let cached = try? KeychainService.shared.retrieve(LinkedInProfileCredentials.self, for: "linkedin_profile") {
+                    personURN = cached.personURN
+                }
+            }
+            
             do {
                 let tokens = try OAuthManager.shared.getTokens(for: "linkedin")
                 accessToken = tokens.accessToken
-                return true
+                
+                // Migration: extract personURN from stored idToken if not yet persisted
+                if personURN == nil, let idToken = tokens.idToken {
+                    setIdToken(idToken)
+                    if let urn = personURN {
+                        let profileCreds = LinkedInProfileCredentials(personURN: urn)
+                        try? KeychainService.shared.save(profileCreds, for: "linkedin_profile")
+                        print("[LinkedIn] Migrated personURN from idToken: \(urn)")
+                    }
+                }
+                
+                // Fallback: fetch personURN from /v2/userinfo API
+                if personURN == nil, let token = accessToken {
+                    if let fetchedURN = try? await fetchPersonURN(token: token) {
+                        personURN = fetchedURN
+                        let profileCreds = LinkedInProfileCredentials(personURN: fetchedURN)
+                        try? KeychainService.shared.save(profileCreds, for: "linkedin_profile")
+                        print("[LinkedIn] Fetched personURN from API: \(fetchedURN)")
+                    }
+                }
+                
+                return accessToken != nil && personURN != nil
             } catch {
                 return false
             }
@@ -592,6 +669,29 @@ final class LinkedInConnector: PlatformConnector {
         return sub
     }
     
+    /// Fetch personURN from LinkedIn /v2/userinfo endpoint (OpenID Connect)
+    private func fetchPersonURN(token: String) async throws -> String {
+        let url = URL(string: "https://api.linkedin.com/v2/userinfo")!
+        
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[LinkedIn] userinfo fetch failed: \(errorBody)")
+            throw PlatformError.postFailed("LinkedIn userinfo failed: \(errorBody)")
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sub = json["sub"] as? String else {
+            throw PlatformError.postFailed("Could not parse LinkedIn userinfo response")
+        }
+        
+        return "urn:li:person:\(sub)"
+    }
+    
     func authenticate() async throws {
         let config = try OAuthManager.shared.getConfig(for: "linkedin")
         let tokens = try await OAuthManager.shared.authenticate(
@@ -605,25 +705,39 @@ final class LinkedInConnector: PlatformConnector {
         if let idToken = tokens.idToken {
             setIdToken(idToken)
         }
+        
+        // Persist personURN to Keychain for launchd scheduler access
+        if let urn = personURN {
+            let profileCreds = LinkedInProfileCredentials(personURN: urn)
+            try KeychainService.shared.save(profileCreds, for: "linkedin_profile")
+            logger.info("LinkedIn profile persisted: \(urn)")
+        }
     }
     
     func post(image: NSImage, caption: String, link: URL) async throws -> PostResult {
         guard let token = accessToken, let urn = personURN else {
+            print("[LinkedIn] post() guard failed: accessToken=\(accessToken != nil), personURN=\(personURN ?? "nil")")
             throw PlatformError.notConfigured
         }
         
         guard let imageData = image.pngData() else {
+            print("[LinkedIn] Failed to convert image to PNG")
             throw PlatformError.postFailed("Failed to convert image to PNG")
         }
         
+        print("[LinkedIn] Starting image post (personURN=\(urn), imageSize=\(imageData.count))")
+        
         // Step 1: Register image upload
         let (uploadURL, imageURN) = try await registerImageUpload(personURN: urn, token: token)
+        print("[LinkedIn] Image registered: \(imageURN)")
         
         // Step 2: Upload the image binary
         try await uploadImage(data: imageData, to: uploadURL, token: token)
+        print("[LinkedIn] Image uploaded successfully")
         
         // Step 3: Create UGC post with image
         let fullCaption = "\(caption)\n\n🔗 \(link.absoluteString)"
+        print("[LinkedIn] Creating post with imageURN=\(imageURN)")
         let postID = try await createPost(text: fullCaption, imageURN: imageURN, personURN: urn, token: token)
         
         logger.info("LinkedIn post created: \(postID)")
@@ -643,6 +757,7 @@ final class LinkedInConnector: PlatformConnector {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2.0.0", forHTTPHeaderField: "LinkedIn-Version")
         
         let payload: [String: Any] = [
             "initializeUploadRequest": [
@@ -656,6 +771,7 @@ final class LinkedInConnector: PlatformConnector {
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("[LinkedIn] Image registration failed: \(errorBody)")
             throw PlatformError.postFailed("Image registration failed: \(errorBody)")
         }
         
@@ -682,10 +798,13 @@ final class LinkedInConnector: PlatformConnector {
         request.setValue("image/png", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
         
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (responseData, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
-            throw PlatformError.postFailed("Image upload failed")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let errorBody = String(data: responseData, encoding: .utf8) ?? "Unknown error"
+            print("[LinkedIn] Image upload failed (\(statusCode)): \(errorBody)")
+            throw PlatformError.postFailed("Image upload failed (\(statusCode))")
         }
     }
     
@@ -696,6 +815,7 @@ final class LinkedInConnector: PlatformConnector {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2.0.0", forHTTPHeaderField: "LinkedIn-Version")
         
         let payload: [String: Any] = [
             "author": personURN,
@@ -721,7 +841,9 @@ final class LinkedInConnector: PlatformConnector {
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
             let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Post creation failed: \(errorBody)")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("[LinkedIn] Post creation failed (\(statusCode)): \(errorBody)")
+            throw PlatformError.postFailed("Post creation failed (\(statusCode)): \(errorBody)")
         }
         
         // Get post ID from x-restli-id header
@@ -729,7 +851,9 @@ final class LinkedInConnector: PlatformConnector {
             return postID
         }
         
-        throw PlatformError.postFailed("No post ID returned")
+        // Some LinkedIn API versions don't return this header, but the post was still created
+        print("[LinkedIn] Post created (201) but no x-restli-id header")
+        return "created"
     }
     
     /// Post text-only content (no image) to LinkedIn

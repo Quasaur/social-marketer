@@ -44,32 +44,69 @@ struct SocialMarketerApp: App {
         
         // Seed introductory post if not already present
         seedIntroductoryPostIfNeeded()
+        
+        // Sync isEnabled state from Keychain (fixes sandbox → App Group migration)
+        syncPlatformEnabledState()
+        
+        // Auto-update launch agent if installed (self-heals after DerivedData wipes or schedule changes)
+        if !CommandLine.arguments.contains("--scheduled-post") {
+            let scheduler = PostScheduler()
+            scheduler.ensureLaunchAgentCurrent()
+        }
     }
     
     private func seedPlatformsIfNeeded() {
         let context = persistenceController.viewContext
         let request = Platform.fetchRequest()
         
+        // Canonical V1 platform list
+        let canonicalPlatforms: [(String, String)] = [
+            ("X (Twitter)", "oauth2"),
+            ("Instagram", "graph_api"),
+            ("LinkedIn", "oauth2"),
+            ("Facebook", "facebook"),
+            ("Pinterest", "pinterest")
+        ]
+        let canonicalNames = Set(canonicalPlatforms.map { $0.0 })
+        
         do {
-            let count = try context.count(for: request)
-            if count == 0 {
-                // Create V1 platforms
-                let platforms = [
-                    ("X (Twitter)", "oauth2"),
-                    ("Instagram", "graph_api"),
-                    ("LinkedIn", "oauth2"),
-                    ("Facebook", "facebook"),
-                    ("Pinterest", "pinterest")
-                ]
-                
-                for (name, apiType) in platforms {
+            let existing = try context.fetch(request)
+            let existingNames = Set(existing.compactMap { $0.name })
+            
+            if existing.isEmpty {
+                // Fresh seed
+                for (name, apiType) in canonicalPlatforms {
                     _ = Platform(context: context, name: name, apiType: apiType)
                 }
-                
                 try context.save()
-                Log.app.notice("Seeded \(platforms.count) default platforms")
+                Log.app.notice("Seeded \(canonicalPlatforms.count) default platforms")
             } else {
-                Log.app.debug("Platform seed skipped — \(count) platforms already exist")
+                var changed = false
+                
+                // Add missing platforms
+                for (name, apiType) in canonicalPlatforms where !existingNames.contains(name) {
+                    _ = Platform(context: context, name: name, apiType: apiType)
+                    Log.app.notice("Added missing platform: \(name)")
+                    print("[seedPlatforms] Added: \(name)")
+                    changed = true
+                }
+                
+                // Remove obsolete platforms (not in canonical list and no credentials)
+                for platform in existing {
+                    let name = platform.name ?? ""
+                    if !canonicalNames.contains(name) {
+                        context.delete(platform)
+                        Log.app.notice("Removed obsolete platform: \(name)")
+                        print("[seedPlatforms] Removed: \(name)")
+                        changed = true
+                    }
+                }
+                
+                if changed {
+                    try context.save()
+                } else {
+                    Log.app.debug("Platform seed skipped — all \(existing.count) platforms current")
+                }
             }
         } catch {
             Log.app.error("Failed to seed platforms: \(error.localizedDescription)")
@@ -113,6 +150,64 @@ struct SocialMarketerApp: App {
         } catch {
             Log.app.error("Failed to seed introductory post: \(error.localizedDescription)")
             ErrorLog.shared.log(category: "App", message: "Failed to seed introductory post", detail: error.localizedDescription)
+        }
+    }
+    
+    /// Sync platform isEnabled state with Keychain credentials.
+    /// Heals the sandbox → App Group store migration: if credentials exist, enable the platform.
+    private func syncPlatformEnabledState() {
+        let context = persistenceController.viewContext
+        let request = Platform.fetchRequest()
+        
+        do {
+            let platforms = try context.fetch(request)
+            var updated = 0
+            
+            for platform in platforms {
+                let name = platform.name ?? ""
+                let hasCredentials = keychainHasCredentials(for: name)
+                
+                if hasCredentials && !platform.isEnabled {
+                    platform.isEnabled = true
+                    updated += 1
+                    Log.app.notice("Auto-enabled platform: \(name) (Keychain credentials found)")
+                    print("[syncPlatform] Auto-enabled: \(name)")
+                } else if !hasCredentials && platform.isEnabled {
+                    platform.isEnabled = false
+                    updated += 1
+                    Log.app.notice("Auto-disabled platform: \(name) (no Keychain credentials)")
+                    print("[syncPlatform] Auto-disabled: \(name)")
+                }
+            }
+            
+            if updated > 0 {
+                try context.save()
+                Log.app.notice("Synced \(updated) platform enabled states from Keychain")
+            }
+        } catch {
+            Log.app.error("Failed to sync platform states: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Check if Keychain has credentials for a platform using the actual keys
+    /// the connectors store under (not the display name)
+    private func keychainHasCredentials(for platformName: String) -> Bool {
+        let ks = KeychainService.shared
+        
+        switch platformName {
+        case "X (Twitter)":
+            return ks.exists(for: "twitter_oauth1")
+        case "LinkedIn":
+            return ks.exists(for: "api_creds_linkedin") || ks.exists(for: "oauth_linkedin")
+        case "Facebook":
+            return ks.exists(for: "api_creds_facebook") || ks.exists(for: "oauth_facebook")
+        case "Instagram":
+            return ks.exists(for: "api_creds_instagram") || ks.exists(for: "oauth_instagram")
+        case "Pinterest":
+            return ks.exists(for: "api_creds_pinterest") || ks.exists(for: "oauth_pinterest")
+        default:
+            // Fallback: try the display name directly
+            return ks.exists(for: platformName)
         }
     }
 }

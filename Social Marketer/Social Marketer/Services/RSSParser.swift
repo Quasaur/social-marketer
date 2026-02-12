@@ -37,11 +37,11 @@ actor RSSParser {
     // MARK: - Feed URLs
     
     static let feedURLs: [String: URL] = [
-        "daily": URL(string: "https://wisdombook.life/feed/daily.xml")!,
-        "wisdom": URL(string: "https://wisdombook.life/feed/wisdom.xml")!,
-        "thoughts": URL(string: "https://wisdombook.life/feed/thoughts.xml")!,
-        "quotes": URL(string: "https://wisdombook.life/feed/quotes.xml")!,
-        "passages": URL(string: "https://wisdombook.life/feed/passages.xml")!
+        "daily": URL(string: "https://www.wisdombook.life/feed/daily.xml")!,
+        "wisdom": URL(string: "https://www.wisdombook.life/feed/wisdom.xml")!,
+        "thoughts": URL(string: "https://www.wisdombook.life/feed/thoughts.xml")!,
+        "quotes": URL(string: "https://www.wisdombook.life/feed/quotes.xml")!,
+        "passages": URL(string: "https://www.wisdombook.life/feed/passages.xml")!
     ]
     
     // MARK: - Public Methods

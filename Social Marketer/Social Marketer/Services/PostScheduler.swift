@@ -21,6 +21,25 @@ final class PostScheduler {
     private static let launchdLabel = "com.wisdombook.SocialMarketer"
     private static let launchdPlistName = "com.wisdombook.SocialMarketer.plist"
     
+    /// UserDefaults keys for configurable schedule time
+    static let scheduleHourKey = "launchd.scheduleHour"
+    static let scheduleMinuteKey = "launchd.scheduleMinute"
+    
+    /// Current schedule time (defaults to 9:00 AM)
+    static var scheduledHour: Int {
+        get {
+            let stored = UserDefaults.standard.integer(forKey: scheduleHourKey)
+            // 0 is both the default and midnight — use a sentinel to distinguish
+            return UserDefaults.standard.object(forKey: scheduleHourKey) != nil ? stored : 9
+        }
+        set { UserDefaults.standard.set(newValue, forKey: scheduleHourKey) }
+    }
+    
+    static var scheduledMinute: Int {
+        get { UserDefaults.standard.integer(forKey: scheduleMinuteKey) }
+        set { UserDefaults.standard.set(newValue, forKey: scheduleMinuteKey) }
+    }
+    
     private static var launchAgentsURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents")
@@ -47,6 +66,34 @@ final class PostScheduler {
         FileManager.default.fileExists(atPath: Self.installedPlistURL.path)
     }
     
+    /// Auto-install or update the launch agent if the executable path or schedule has changed.
+    /// Called on every app launch to self-heal after DerivedData wipes or schedule changes.
+    func ensureLaunchAgentCurrent() {
+        guard isLaunchAgentInstalled else { return } // respect user's toggle choice
+        
+        // Read the installed plist and compare executable path + schedule
+        guard let data = try? Data(contentsOf: Self.installedPlistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let args = plist["ProgramArguments"] as? [String],
+              let schedule = plist["StartCalendarInterval"] as? [String: Int] else {
+            // Can't read — reinstall
+            try? installLaunchAgent()
+            return
+        }
+        
+        let installedPath = args.first ?? ""
+        let currentPath = Bundle.main.executableURL?.path ?? ""
+        let installedHour = schedule["Hour"] ?? -1
+        let installedMinute = schedule["Minute"] ?? -1
+        
+        if installedPath != currentPath || installedHour != Self.scheduledHour || installedMinute != Self.scheduledMinute {
+            logger.info("Launch agent outdated — reinstalling (path or schedule changed)")
+            try? installLaunchAgent()
+        } else {
+            logger.debug("Launch agent is current")
+        }
+    }
+    
     /// Install the launch agent for background scheduling
     func installLaunchAgent() throws {
         let fileManager = FileManager.default
@@ -65,7 +112,7 @@ final class PostScheduler {
         let plistDict: [String: Any] = [
             "Label": Self.launchdLabel,
             "ProgramArguments": [executableURL.path, "--scheduled-post"],
-            "StartCalendarInterval": ["Hour": 9, "Minute": 0],
+            "StartCalendarInterval": ["Hour": Self.scheduledHour, "Minute": Self.scheduledMinute],
             "RunAtLoad": false,
             "KeepAlive": false,
             "StandardOutPath": "/tmp/com.wisdombook.SocialMarketer.out.log",
@@ -133,6 +180,15 @@ final class PostScheduler {
     /// Execute scheduled posting (called by launchd or manually)
     func executeScheduledPost() async {
         logger.info("Executing scheduled post...")
+        
+        // Diagnostic: log platform state
+        let context = PersistenceController.shared.viewContext
+        let allPlatforms = (try? context.fetch(Platform.fetchRequest())) ?? []
+        let enabledPlatforms = allPlatforms.filter { $0.isEnabled }
+        print("[PostScheduler] Platforms: \(allPlatforms.count) total, \(enabledPlatforms.count) enabled")
+        for p in allPlatforms {
+            print("[PostScheduler]   - \(p.name ?? "?") enabled=\(p.isEnabled) apiType=\(p.apiType ?? "?")")
+        }
         
         // Check if introductory post is due (every 90 days)
         await postIntroductoryIfDue()
@@ -227,9 +283,8 @@ final class PostScheduler {
             let platformName = platform.name ?? "Unknown"
             
             guard let connector = connectorFor(platform) else { continue }
-            guard let apiType = platform.apiType,
-                  OAuthManager.shared.hasValidTokens(for: apiType) else {
-                logger.warning("\(platformName) not authenticated for intro post, skipping")
+            guard await connector.isConfigured else {
+                logger.warning("\(platformName) not configured for intro post, skipping")
                 continue
             }
             
@@ -271,22 +326,34 @@ final class PostScheduler {
     
     /// Map a Core Data Platform to its API connector
     private func connectorFor(_ platform: Platform) -> PlatformConnector? {
-        guard let apiType = platform.apiType else { return nil }
+        guard let name = platform.name else { return nil }
         
-        switch apiType {
-        case "twitter":
+        switch name {
+        case "X (Twitter)":
             return TwitterConnector()
-        case "instagram":
+        case "Instagram":
             return InstagramConnector()
-        case "linkedin":
+        case "LinkedIn":
             return LinkedInConnector()
-        case "facebook":
+        case "Facebook":
             return FacebookConnector()
-        case "pinterest":
+        case "Pinterest":
             return PinterestConnector()
         default:
-            logger.warning("Unknown platform type: \(apiType)")
+            logger.warning("Unknown platform: \(name)")
             return nil
+        }
+    }
+    
+    /// Map a Core Data Platform to its OAuth platform ID (used for token lookup)
+    private func oauthPlatformID(for platform: Platform) -> String? {
+        switch platform.name {
+        case "X (Twitter)": return "twitter"
+        case "Instagram":   return "instagram"
+        case "LinkedIn":    return "linkedin"
+        case "Facebook":    return "facebook"
+        case "Pinterest":   return "pinterest"
+        default:            return nil
         }
     }
     
@@ -324,12 +391,11 @@ final class PostScheduler {
                 continue
             }
             
-            // Check for valid tokens
-            guard let apiType = platform.apiType,
-                  OAuthManager.shared.hasValidTokens(for: apiType) else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "Not authenticated — connect in Platforms settings")
+            // Check connector is configured (loads credentials from Keychain)
+            guard await connector.isConfigured else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "Not configured — connect in Platforms settings")
                 post.addToLogs(log)
-                logger.warning("\(platformName) not authenticated, skipping")
+                logger.warning("\(platformName) not configured, skipping")
                 continue
             }
             
@@ -422,9 +488,8 @@ final class PostScheduler {
                 continue
             }
             
-            guard let apiType = platform.apiType,
-                  OAuthManager.shared.hasValidTokens(for: apiType) else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "Not authenticated")
+            guard await connector.isConfigured else {
+                let log = PostLog(context: context, post: post, platform: platform, error: "Not configured")
                 post.addToLogs(log)
                 continue
             }
