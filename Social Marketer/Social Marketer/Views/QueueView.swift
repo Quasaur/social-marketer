@@ -73,7 +73,7 @@ struct QueueView: View {
                         .foregroundStyle(schedulerInstalled ? .green : .orange)
                     
                     Toggle("Daily Scheduler", isOn: $schedulerInstalled)
-                        .toggleStyle(.switch)
+                        .toggleStyle(.status)
                         .onChange(of: schedulerInstalled) { _, newValue in
                             toggleScheduler(enabled: newValue)
                         }
