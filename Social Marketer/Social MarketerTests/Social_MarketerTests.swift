@@ -372,8 +372,8 @@ final class RSSXMLParserTests: XCTestCase {
         XCTAssertFalse(entry.content.contains("Level 4"), "Level metadata should be stripped")
         XCTAssertFalse(entry.content.contains("From: Topic:"), "From: Topic: line should be stripped")
         XCTAssertTrue(entry.content.contains("Leviathan"), "Core quote content must be preserved")
-        // Book name should be stripped from displayed content (it's in reference)
-        XCTAssertFalse(entry.content.contains("The Narrow Way"), "Book name should be stripped from content body")
+        // With wisdom:source as canonical, book names remain in content
+        XCTAssertTrue(entry.content.contains("The Narrow Way"), "Book name from <em> tag remains in content")
     }
     
     func testParseQuoteWithLongBookName() throws {

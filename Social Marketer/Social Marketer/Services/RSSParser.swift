@@ -266,13 +266,6 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         // Strip "From: Topic: ..." and "Parent Topic: ..." lines
         text = Self.fromTopicRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
         text = Self.parentTopicRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Strip standalone book name lines
-        if let bookName = extractBookName(from: html) {
-            let escaped = NSRegularExpression.escapedPattern(for: bookName)
-            if let bookRegex = try? NSRegularExpression(pattern: "(?m)^\\s*" + escaped + "\\s*$") {
-                text = bookRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-            }
-        }
         // Collapse multiple blank lines into one
         text = Self.multiBlankLineRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "\n\n")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
