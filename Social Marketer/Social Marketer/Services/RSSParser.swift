@@ -156,6 +156,8 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         guard elementName == "item" else { return }
         isInsideItem = false
         
+        print("[DEBUG] Processing item #\(entries.count + 1)...")
+        
         // Parse category
         let category: WisdomEntry.WisdomCategory
         if currentCategory.contains("Thought") {
