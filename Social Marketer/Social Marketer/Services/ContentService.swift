@@ -72,10 +72,28 @@ actor ContentService {
         let context = PersistenceController.shared.viewContext
         var newCount = 0
         
+        // Batch fetch all existing entries by link (single query instead of 50!)
+        let linkStrings = entries.map { $0.link.absoluteString }
+        let request = CachedWisdomEntry.fetchRequest()
+        request.predicate = NSPredicate(format: "linkString IN %@", linkStrings)
+        
+        let existingEntries: [CachedWisdomEntry]
+        do {
+            existingEntries = try context.fetch(request)
+        } catch {
+            logger.error("Failed to fetch existing entries: \(error.localizedDescription)")
+            existingEntries = []
+        }
+        
+        // Build lookup dictionary for O(1) access
+        let existingByLink: [String: CachedWisdomEntry] = Dictionary(uniqueKeysWithValues: existingEntries.compactMap { entry in
+            guard let link = entry.linkString else { return nil }
+            return (link, entry)
+        })
+        
         for entry in entries {
-            // Check for duplicate by link
             let linkString = entry.link.absoluteString
-            if let existing = CachedWisdomEntry.findByLink(linkString, in: context) {
+            if let existing = existingByLink[linkString] {
                 // Update existing entry content (picks up improved cleaning)
                 existing.title = entry.title
                 existing.content = entry.content
