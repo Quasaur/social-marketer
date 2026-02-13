@@ -48,32 +48,17 @@ actor RSSParser {
     
     /// Fetch the daily wisdom entry
     func fetchDaily() async throws -> WisdomEntry? {
-        Log.rss.info("Fetching daily wisdom entry...")
         let entries = try await fetchFeed(url: Self.feedURLs["daily"]!)
-        Log.rss.debug("Daily fetch returned \(entries.count) entries")
         return entries.first
     }
     
     /// Fetch entries from a specific feed
     func fetchFeed(url: URL) async throws -> [WisdomEntry] {
-        let startTime = Date()
-        Log.rss.info("Fetching feed: \(url.lastPathComponent)")
         do {
-            let networkStart = Date()
             let (data, _) = try await URLSession.shared.data(from: url)
-            let networkTime = Date().timeIntervalSince(networkStart)
-            Log.rss.info("Network fetch completed in \(String(format: "%.2f", networkTime))s, data size: \(data.count) bytes")
-            
-            let parseStart = Date()
             let entries = try parseRSS(data: data)
-            let parseTime = Date().timeIntervalSince(parseStart)
-            Log.rss.info("XML parsing completed in \(String(format: "%.2f", parseTime))s")
-            
-            let totalTime = Date().timeIntervalSince(startTime)
-            Log.rss.info("Parsed \(entries.count) entries from \(url.lastPathComponent) in \(String(format: "%.2f", totalTime))s total")
             return entries
         } catch {
-            Log.rss.error("Feed fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
             Task { @MainActor in
                 ErrorLog.shared.log(category: "RSS", message: "Feed fetch failed for \(url.lastPathComponent)", detail: error.localizedDescription)
             }
@@ -121,13 +106,9 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     func parse() throws -> [WisdomEntry] {
-        let startTime = Date()
-        Log.rss.info("Starting XML parse...")
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.parse()
-        let parseTime = Date().timeIntervalSince(startTime)
-        Log.rss.info("XMLParser.parse() completed in \(String(format: "%.2f", parseTime))s, \(entries.count) entries")
         return entries
     }
     
