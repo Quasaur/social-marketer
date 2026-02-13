@@ -1262,14 +1262,14 @@ final class QuoteGraphicGenerator {
     }
     
     private func drawReference(_ reference: String) {
-        let font = NSFont.systemFont(ofSize: 24, weight: .light)
+        let font = NSFont.systemFont(ofSize: 40, weight: .semibold)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: goldColor,
             .paragraphStyle: centeredParagraphStyle(lineSpacing: 4)
         ]
         
-        let refRect = NSRect(x: 80, y: 100, width: imageSize.width - 160, height: 50)
+        let refRect = NSRect(x: 80, y: 135, width: imageSize.width - 160, height: 60)
         ("— " + reference).draw(in: refRect, withAttributes: attributes)
     }
     
