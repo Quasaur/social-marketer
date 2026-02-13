@@ -22,35 +22,22 @@ actor ContentService {
     
     // MARK: - Public Methods
     
-    /// Refresh content from all per-type RSS feeds
+    /// Refresh content from the main wisdom feed
     /// Returns the count of new entries added
     @discardableResult
     func refreshContent() async throws -> Int {
-        logger.info("Refreshing content from RSS feeds...")
+        logger.info("Refreshing content from RSS feed...")
         
-        // Fetch from per-type feeds (richer metadata than wisdom.xml)
-        let feedKeys = ["thoughts", "quotes", "passages"]
-        var allEntries: [WisdomEntry] = []
-        
-        for key in feedKeys {
-            guard let url = RSSParser.feedURLs[key] else { continue }
-            do {
-                let entries = try await rssParser.fetchFeed(url: url)
-                allEntries.append(contentsOf: entries)
-            } catch {
-                logger.error("Failed to fetch \(key) feed: \(error.localizedDescription)")
-                // Continue with other feeds even if one fails
-            }
+        // Fetch from the main wisdom feed
+        guard let feedURL = RSSParser.feedURLs["wisdom"] else {
+            throw ContentError.invalidFeedURL
         }
         
-        guard !allEntries.isEmpty else {
-            throw ContentError.fetchFailed(NSError(domain: "ContentService", code: -1, userInfo: [NSLocalizedDescriptionKey: "All feeds returned empty"]))
-        }
-        
-        logger.info("Fetched \(allEntries.count) total entries from \(feedKeys.count) feeds")
+        let entries = try await rssParser.fetchFeed(url: feedURL)
+        logger.info("Fetched \(entries.count) entries from RSS feed")
         
         // Cache entries on main actor (Core Data requirement)
-        let newCount = await cacheEntries(allEntries)
+        let newCount = await cacheEntries(entries)
         logger.info("Cached \(newCount) new entries")
         
         return newCount
