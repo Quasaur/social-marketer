@@ -531,6 +531,19 @@ struct PlatformSettingsView: View {
         
         do {
             let connector = PinterestConnector()
+            
+            // Auto-discover board if not configured (for manual token users)
+            if !(await connector.isConfigured) {
+                // Fetch board using the manual access token
+                if let tokens = try? OAuthManager.shared.getTokens(for: "pinterest") {
+                    // Call the internal board discovery (need to make it accessible)
+                    // For now, just show an error asking user to disconnect/reconnect
+                    errorMessage = "Pinterest board not configured. Please Disconnect and Connect Pinterest again to auto-discover your boards."
+                    showingError = true
+                    return
+                }
+            }
+            
             guard await connector.isConfigured else {
                 errorMessage = "Pinterest not configured. Try disconnecting and reconnecting."
                 showingError = true

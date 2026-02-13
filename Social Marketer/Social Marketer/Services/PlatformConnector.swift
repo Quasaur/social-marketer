@@ -1262,18 +1262,24 @@ final class PinterestConnector: PlatformConnector {
         
         let boardsResponse = try JSONDecoder().decode(BoardsResponse.self, from: data)
         
-        guard let firstBoard = boardsResponse.items.first else {
+        guard !boardsResponse.items.isEmpty else {
             throw PlatformError.postFailed("No Pinterest boards found. Create a board on Pinterest first.")
         }
         
-        boardID = firstBoard.id
-        boardName = firstBoard.name
+        // Prefer "The Book of Wisdom" or boards with "wisdom" or "book" in the name
+        let targetBoard = boardsResponse.items.first(where: {
+            $0.name.localizedCaseInsensitiveContains("wisdom") ||
+            $0.name.localizedCaseInsensitiveContains("book")
+        }) ?? boardsResponse.items.first!
+        
+        boardID = targetBoard.id
+        boardName = targetBoard.name
         
         // Persist to Keychain
-        let creds = PinterestCredentials(boardID: firstBoard.id, boardName: firstBoard.name)
+        let creds = PinterestCredentials(boardID: targetBoard.id, boardName: targetBoard.name)
         try KeychainService.shared.save(creds, for: "pinterest_board")
         
-        logger.info("Pinterest board connected: \(firstBoard.name) (ID: \(firstBoard.id))")
+        logger.info("Pinterest board connected: \(targetBoard.name) (ID: \(targetBoard.id))")
     }
     
     // MARK: - Pin Creation
