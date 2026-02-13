@@ -105,8 +105,8 @@ final class QuoteGraphicGenerator {
         // Draw content
         drawContent(content)
         
-        // Draw reference if exists
-        if let reference = reference {
+        // Draw reference if exists AND not already in content
+        if let reference = reference, !content.contains(reference) {
             drawReference(reference)
         }
         
