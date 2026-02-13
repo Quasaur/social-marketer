@@ -164,6 +164,12 @@ struct PlatformSettingsView: View {
                         )
                     }
                 )
+            } else if platform.id == "pinterest" {
+                PinterestCredentialsInputSheet(
+                    onSave: { clientID, clientSecret, accessToken in
+                        savePinterestCredentials(clientID: clientID, clientSecret: clientSecret, accessToken: accessToken)
+                    }
+                )
             } else {
                 CredentialsInputSheet(
                     platform: platform,
@@ -256,8 +262,35 @@ struct PlatformSettingsView: View {
             )
             try oauthManager.saveAPICredentials(creds, for: platform.id)
             credentialStatus[platform.id] = true
+        } catch {
+            errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func savePinterestCredentials(clientID: String, clientSecret: String, accessToken: String?) {
+        do {
+            // Save API credentials
+            let creds = OAuthManager.APICredentials(
+                clientID: clientID.trimmingCharacters(in: .whitespacesAndNewlines),
+                clientSecret: clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            try oauthManager.saveAPICredentials(creds, for: "pinterest")
+            credentialStatus["pinterest"] = true
             
-
+            // If manual access token provided, save it directly
+            if let token = accessToken, !token.isEmpty {
+                let tokens = OAuthManager.OAuthTokens(
+                    accessToken: token.trimmingCharacters(in: .whitespacesAndNewlines),
+                    refreshToken: nil,
+                    expiresAt: nil,
+                    tokenType: "Bearer",
+                    scope: "boards:read,pins:write",
+                    idToken: nil
+                )
+                try oauthManager.saveTokens(tokens, for: "pinterest")
+                connectionStatus["pinterest"] = .connected
+            }
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -676,6 +709,17 @@ struct CredentialsInputSheet: View {
         }
         .padding(24)
         .frame(width: 400, height: 280)
+        .onAppear {
+            loadExistingCredentials()
+        }
+    }
+    
+    private func loadExistingCredentials() {
+        // Load existing API credentials if they exist
+        if let creds = try? OAuthManager.shared.getAPICredentials(for: platform.id) {
+            clientID = creds.clientID
+            clientSecret = creds.clientSecret ?? ""
+        }
     }
 }
 
@@ -752,6 +796,19 @@ struct TwitterCredentialsInputSheet: View {
         }
         .padding(24)
         .frame(width: 420, height: 420)
+        .onAppear {
+            loadExistingCredentials()
+        }
+    }
+    
+    private func loadExistingCredentials() {
+        // Load existing Twitter OAuth 1.0a credentials if they exist
+        if let creds = try? OAuthManager.shared.getTwitterOAuth1Credentials() {
+            consumerKey = creds.consumerKey
+            consumerSecret = creds.consumerSecret
+            accessToken = creds.accessToken
+            accessTokenSecret = creds.accessTokenSecret
+        }
     }
 }
 
