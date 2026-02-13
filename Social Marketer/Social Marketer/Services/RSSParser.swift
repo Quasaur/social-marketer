@@ -56,11 +56,21 @@ actor RSSParser {
     
     /// Fetch entries from a specific feed
     func fetchFeed(url: URL) async throws -> [WisdomEntry] {
+        let startTime = Date()
         Log.rss.info("Fetching feed: \(url.lastPathComponent)")
         do {
+            let networkStart = Date()
             let (data, _) = try await URLSession.shared.data(from: url)
+            let networkTime = Date().timeIntervalSince(networkStart)
+            Log.rss.info("Network fetch completed in \(String(format: "%.2f", networkTime))s, data size: \(data.count) bytes")
+            
+            let parseStart = Date()
             let entries = try parseRSS(data: data)
-            Log.rss.info("Parsed \(entries.count) entries from \(url.lastPathComponent)")
+            let parseTime = Date().timeIntervalSince(parseStart)
+            Log.rss.info("XML parsing completed in \(String(format: "%.2f", parseTime))s")
+            
+            let totalTime = Date().timeIntervalSince(startTime)
+            Log.rss.info("Parsed \(entries.count) entries from \(url.lastPathComponent) in \(String(format: "%.2f", totalTime))s total")
             return entries
         } catch {
             Log.rss.error("Feed fetch failed for \(url.lastPathComponent): \(error.localizedDescription)")
