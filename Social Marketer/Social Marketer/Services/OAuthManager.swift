@@ -562,15 +562,27 @@ final class OAuthManager: NSObject, ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         
+        // Pinterest requires Basic Authentication header for token exchange
+        if config.platformID == "pinterest", let secret = config.clientSecret {
+            let credentials = "\(config.clientID):\(secret)"
+            if let credentialsData = credentials.data(using: .utf8) {
+                let base64Credentials = credentialsData.base64EncodedString()
+                request.setValue("Basic \(base64Credentials)", forHTTPHeaderField: "Authorization")
+            }
+        }
+        
         var body = [
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": config.redirectURI,
-            "client_id": config.clientID
+            "redirect_uri": config.redirectURI
         ]
         
-        if let secret = config.clientSecret {
-            body["client_secret"] = secret
+        // Pinterest uses Basic Auth, so don't include client_id/secret in body
+        if config.platformID != "pinterest" {
+            body["client_id"] = config.clientID
+            if let secret = config.clientSecret {
+                body["client_secret"] = secret
+            }
         }
         
         if config.usePKCE, let pkce = currentPKCE {
