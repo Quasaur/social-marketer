@@ -551,13 +551,15 @@ struct PlatformSettingsView: View {
             }
             
             let caption = """
-            📖 The Book of Wisdom — a curated collection of proverbs for the modern age.
-
             Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.
 
-            Now I am consolidating all of my work in a single graph database which can be enjoyed by everyone free-of-charge through my new website.
+            In 2015 I published The Book of Tweets: Proverbs for the Modern Age on Amazon Kindle. In it I placed well over 600 proverbs, maxims and adages.
 
-            #Wisdom #BookOfWisdom #Proverbs #BibleWisdom #WisdomBook
+            Since that time I have posted another 300 adages on 19 social media platforms in an effort to communicate with the world the critical importance of Biblical Wisdom to our mental health, fortune and survival.
+
+            Now, in the latter days of my earthly journey, I am consolidating all of my work in a single Neo4j AURADB graph database which can be enjoyed by everyone free-of-charge through my new website The Book of Wisdom:
+
+            https://www.wisdombook.life
             """
             
             if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
