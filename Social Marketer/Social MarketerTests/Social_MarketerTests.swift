@@ -86,6 +86,8 @@ final class WisdomEntryTests: XCTestCase {
 
 final class RSSXMLParserTests: XCTestCase {
     
+    // MARK: - Basic Parsing
+    
     func testParseValidRSSFeed() throws {
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -148,32 +150,6 @@ final class RSSXMLParserTests: XCTestCase {
         XCTAssertEqual(entries[1].category, .quote)
     }
     
-    func testParseHTMLContent() throws {
-        let xml = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <rss version="2.0">
-            <channel>
-                <item>
-                    <title>HTML Test</title>
-                    <description>&lt;p&gt;This is &lt;b&gt;bold&lt;/b&gt; text.&lt;/p&gt;</description>
-                    <link>https://wisdombook.life/test</link>
-                    <pubDate>Mon, 10 Feb 2026 09:00:00 EST</pubDate>
-                    <category>Passage</category>
-                </item>
-            </channel>
-        </rss>
-        """
-        
-        let data = xml.data(using: .utf8)!
-        let parser = RSSXMLParser(data: data)
-        let entries = try parser.parse()
-        
-        XCTAssertEqual(entries.count, 1)
-        // HTML tags should be stripped
-        XCTAssertFalse(entries.first?.content.contains("<p>") ?? true)
-        XCTAssertFalse(entries.first?.content.contains("<b>") ?? true)
-    }
-    
     func testParseEmptyFeed() throws {
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -192,7 +168,6 @@ final class RSSXMLParserTests: XCTestCase {
     }
     
     func testParseCategoryMapping() throws {
-        // Test default category (not Thought or Quote = passage)
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
@@ -215,7 +190,400 @@ final class RSSXMLParserTests: XCTestCase {
         XCTAssertEqual(entries.first?.category, .passage, "Unknown categories should default to Passage")
     }
     
-    func testParseScriptureReference() throws {
+    func testParseMultipleCategories() throws {
+        // Real feeds have multiple <category> elements per item
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Multi Cat</title>
+                    <description>Content</description>
+                    <link>https://wisdombook.life/test</link>
+                    <pubDate>Mon, 10 Feb 2026 09:00:00 EST</pubDate>
+                    <category>Wisdom</category>
+                    <category>Philosophy</category>
+                    <category>Faith</category>
+                    <category>Quote</category>
+                    <category>Level 3</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.category, .quote, "Should pick 'Quote' from the combined category text")
+    }
+    
+    // MARK: - HTML Cleaning
+    
+    func testParseHTMLContent() throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>HTML Test</title>
+                    <description>&lt;p&gt;This is &lt;b&gt;bold&lt;/b&gt; text.&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/test</link>
+                    <pubDate>Mon, 10 Feb 2026 09:00:00 EST</pubDate>
+                    <category>Passage</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertFalse(entries.first?.content.contains("<p>") ?? true, "HTML <p> tags should be stripped")
+        XCTAssertFalse(entries.first?.content.contains("<b>") ?? true, "HTML <b> tags should be stripped")
+        XCTAssertTrue(entries.first?.content.contains("bold") ?? false, "Text content should be preserved")
+    }
+    
+    func testHTMLEntityDecoding() throws {
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Entity Test</title>
+                    <description>&lt;p&gt;God&amp;apos;s &amp;amp; man&amp;apos;s ways&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/test</link>
+                    <pubDate>Mon, 10 Feb 2026 09:00:00 EST</pubDate>
+                    <category>Thought</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let content = entries.first?.content ?? ""
+        XCTAssertFalse(content.contains("&amp;"), "HTML entities should be decoded")
+    }
+    
+    // MARK: - Real-World Thought Format
+    
+    func testParseRealThoughtEntry() throws {
+        // Matches the actual format from wisdombook.life/feed/thoughts.xml
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>THE HOLY SPIRIT</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 1 Thought&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;The Holy Spirit is God, and all men must be filled with Him.&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: The GODHEAD&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/the-holy-spirit</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Wisdom</category>
+                    <category>Philosophy</category>
+                    <category>Thought</category>
+                    <category>Level 1</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        let entry = entries[0]
+        XCTAssertEqual(entry.title, "THE HOLY SPIRIT")
+        XCTAssertEqual(entry.category, .thought)
+        // Content should have "Level 1 Thought" and "From: Topic:" metadata stripped
+        XCTAssertFalse(entry.content.contains("Level 1"), "Level metadata should be stripped")
+        XCTAssertFalse(entry.content.contains("From: Topic:"), "From: Topic: line should be stripped")
+        XCTAssertTrue(entry.content.contains("The Holy Spirit is God"), "Core content must be preserved")
+    }
+    
+    func testParseThoughtWithScriptureInContent() throws {
+        // Some thoughts embed scripture references inline
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>YISRAEL</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Thought&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Two wrongs don't make a right…until Israel repents. Daniel 9:26&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Chronology&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/yisrael</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                    <category>Level 4</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.category, .thought)
+        // Scripture reference in content should be extracted
+        if let ref = entry.reference {
+            XCTAssertTrue(ref.contains("Daniel"), "Reference should contain 'Daniel', got: \(ref)")
+        }
+    }
+    
+    // MARK: - Real-World Quote Format
+    
+    func testParseRealQuoteWithBookName() throws {
+        // Matches the actual format from wisdombook.life/feed/quotes.xml
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>WHERE IS GOD?</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;GOD is the eight-billion-ton Leviathan in the room...yet you cannot see Him.&lt;/p&gt;&lt;p&gt;&lt;em&gt;The Narrow Way&lt;/em&gt;&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Predestination&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/where-is-god</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Wisdom</category>
+                    <category>Quote</category>
+                    <category>Level 4</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        let entry = entries[0]
+        XCTAssertEqual(entry.title, "WHERE IS GOD?")
+        XCTAssertEqual(entry.category, .quote)
+        // Book name should be extracted as reference
+        XCTAssertEqual(entry.reference, "The Narrow Way", "Book name from <em> tag should be the reference")
+        // Content should be cleaned of metadata
+        XCTAssertFalse(entry.content.contains("Level 4"), "Level metadata should be stripped")
+        XCTAssertFalse(entry.content.contains("From: Topic:"), "From: Topic: line should be stripped")
+        XCTAssertTrue(entry.content.contains("Leviathan"), "Core quote content must be preserved")
+        // Book name should be stripped from displayed content (it's in reference)
+        XCTAssertFalse(entry.content.contains("The Narrow Way"), "Book name should be stripped from content body")
+    }
+    
+    func testParseQuoteWithLongBookName() throws {
+        // Book names can be long: "IMMMUNITY to the Lake of Fire: A No-Nonsense Guide"
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>WEALTH AND FAITH</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 3 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Wealth and Faith are mutually exclusive.&lt;/p&gt;&lt;p&gt;&lt;em&gt;IMMMUNITY to the Lake of Fire: A No-Nonsense Guide&lt;/em&gt;&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Abundance&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/wealth-and-faith</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                    <category>Level 3</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.reference, "IMMMUNITY to the Lake of Fire: A No-Nonsense Guide")
+        XCTAssertTrue(entry.content.contains("Wealth and Faith"), "Core content must be preserved")
+    }
+    
+    func testParseQuoteWithMarkdownLinks() throws {
+        // Some quotes contain markdown-style links: [text](url)
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>UNGODLY</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;This is what the Bible means by 'ungodly' ([Psalms 1:4,5](https://www.biblegateway.com/passage/?search=Psalms+1%3A4-5&amp;amp;version=ESV)).&lt;/p&gt;&lt;p&gt;&lt;em&gt;The Narrow Way&lt;/em&gt;&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Malevolence&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/ungodly</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                    <category>Level 4</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.reference, "The Narrow Way")
+        XCTAssertTrue(entry.content.contains("ungodly"), "Core content must be preserved")
+    }
+    
+    // MARK: - Real-World Passage Format
+    
+    func testParseRealPassageWithBibleRef() throws {
+        // Matches the actual format from wisdombook.life/feed/passages.xml (Feb 2026+)
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <item>
+                    <title>SCORNERS</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Passage&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Toward the scorners He [The LORD] is scornful,&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Malevolence&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/passages/scorners</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Wisdom</category>
+                    <category>Passage</category>
+                    <category>Scripture</category>
+                    <category>Level 4</category>
+                    <category>Proverbs</category>
+                    <wisdom:source>Proverbs 3:34</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        let entry = entries[0]
+        XCTAssertEqual(entry.title, "SCORNERS")
+        XCTAssertEqual(entry.category, .passage)
+        // Reference should come from <wisdom:source>
+        XCTAssertEqual(entry.reference, "Proverbs 3:34", "Reference should come from wisdom:source element")
+        // Content should be cleaned
+        XCTAssertTrue(entry.content.contains("scorners"), "Core passage text must be preserved")
+        XCTAssertFalse(entry.content.contains("From: Topic:"), "From: Topic: line should be stripped")
+    }
+    
+    func testParsePassageWithVerseRange() throws {
+        // Passages may have verse ranges like Proverbs 2:10-12
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <item>
+                    <title>PROTECTION FROM EVIL</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Passage&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;For wisdom will enter your heart.&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Malevolence&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/passages/protection-from-evil</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Passage</category>
+                    <category>Level 4</category>
+                    <wisdom:source>Proverbs 2:10-12</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.title, "PROTECTION FROM EVIL")
+        XCTAssertEqual(entry.reference, "Proverbs 2:10-12", "Reference with verse range from wisdom:source")
+    }
+    
+    func testParsePassageWithCommaVerses() throws {
+        // Some passages use comma-separated verses: Proverbs 3:7,8
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <item>
+                    <title>PRIDE-AS-EVIL</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Passage&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Do not be wise in your own eyes; Fear the LORD.&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Lowliness of Heart&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/passages/pride-as-evil</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Passage</category>
+                    <wisdom:source>Proverbs 3:7,8</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.title, "PRIDE-AS-EVIL")
+        XCTAssertEqual(entry.reference, "Proverbs 3:7,8", "Reference with comma-separated verses from wisdom:source")
+    }
+    
+    // MARK: - Content Cleaning
+
+    func testMetadataLevelLineStripping() throws {
+        // The <strong>Level N Type</strong> line should be stripped from content
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>NO WATER</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 4 Thought&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;How can a fish say there is no water? Yet men say there is no God!&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: The Science of Ideology&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/no-water</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let content = entries[0].content
+        XCTAssertFalse(content.contains("Level 4"), "Level metadata should NOT appear in content")
+        XCTAssertFalse(content.contains("Level 4 Thought"), "Full level line should be stripped")
+        XCTAssertFalse(content.contains("From: Topic:"), "From: Topic: should be stripped")
+        XCTAssertFalse(content.contains("Science of Ideology"), "Topic name should be stripped with From: line")
+        XCTAssertTrue(content.contains("How can a fish"), "Core content must be preserved")
+    }
+    
+    func testFromTopicTopicPattern() throws {
+        // Feed uses doubled "Topic:" pattern: "From: Topic: Topic: X"
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>TEST</title>
+                    <description>&lt;p&gt;Core content here.&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Earth's Natural Processes&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/test</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let content = entries[0].content
+        XCTAssertFalse(content.contains("From:"), "From: line should be fully stripped")
+        XCTAssertFalse(content.contains("Earth's Natural Processes"), "Topic text should be stripped")
+        XCTAssertTrue(content.contains("Core content here"), "Core content must be preserved")
+    }
+    
+    func testScriptureReferenceInContent() throws {
+        // Simple scripture reference extraction from plain content
         let xml = """
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
@@ -236,11 +604,241 @@ final class RSSXMLParserTests: XCTestCase {
         let entries = try parser.parse()
         
         XCTAssertEqual(entries.count, 1)
-        // The reference extractor should find "Proverbs 3:5"
         if let ref = entries.first?.reference {
             XCTAssertTrue(ref.contains("Proverbs"), "Reference should contain 'Proverbs', got: \(ref)")
         }
-        // Note: reference extraction is best-effort; nil is acceptable for edge cases
+    }
+    
+    // MARK: - Wisdom.xml Mixed Feed
+    
+    func testParseMixedWisdomFeed() throws {
+        // wisdom.xml contains thoughts, quotes, and passages together
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <title>Wisdom Book - All Wisdom</title>
+                <item>
+                    <title>Ecological Care</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 6 Thought&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;(Weeping over BP Oil Spill).&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Earth's Natural Processes&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/ecological-care</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                    <category>Level 6</category>
+                </item>
+                <item>
+                    <title>WRONG REASON</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 3 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;IT IS POSSIBLE TO PERFORM A GOOD DEED FOR THE WRONG REASON.&lt;/p&gt;&lt;p&gt;&lt;em&gt;The Basics and More: A Year's Sermons&lt;/em&gt;&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Spiritual Disposition&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/wrong-reason</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                    <category>Level 3</category>
+                </item>
+                <item>
+                    <title>OBLIGATION</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 3 Passage&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Do not withhold good from those to whom it is due,&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: Matters of the Conscience&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/passages/obligation</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Passage</category>
+                    <category>Level 3</category>
+                    <wisdom:source>Proverbs 3:27,28</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 3)
+        
+        // Thought
+        XCTAssertEqual(entries[0].category, .thought)
+        XCTAssertEqual(entries[0].title, "Ecological Care")
+        XCTAssertTrue(entries[0].content.contains("Weeping"), "Thought content must be preserved")
+        XCTAssertFalse(entries[0].content.contains("Level 6"), "Level line should be stripped")
+        
+        // Quote with book name
+        XCTAssertEqual(entries[1].category, .quote)
+        XCTAssertEqual(entries[1].reference, "The Basics and More: A Year's Sermons")
+        XCTAssertTrue(entries[1].content.contains("GOOD DEED"), "Quote content must be preserved")
+        
+        // Passage with Bible ref
+        XCTAssertEqual(entries[2].category, .passage)
+        XCTAssertEqual(entries[2].title, "OBLIGATION")
+        XCTAssertEqual(entries[2].reference, "Proverbs 3:27,28", "Reference from wisdom:source")
+        XCTAssertNotNil(entries[2].reference, "Passage should have Bible reference")
+        if let ref = entries[2].reference {
+            XCTAssertTrue(ref.contains("Proverbs") && ref.contains("3:27"),
+                          "Reference should be 'Proverbs 3:27,28', got: \(ref)")
+        }
+    }
+    
+    // MARK: - Edge Cases
+    
+    func testThoughtWithNoFromTopicLine() throws {
+        // Some entries may not have the From: Topic: metadata
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>SIMPLE</title>
+                    <description>&lt;p&gt;A simple thought with no metadata.&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/simple</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0].content, "A simple thought with no metadata.")
+        XCTAssertNil(entries[0].reference, "Thought without scripture should have nil reference")
+    }
+    
+    func testQuoteWithoutBookName() throws {
+        // A quote that only has From: Topic but no book <em> tag
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>NO BOOK QUOTE</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 3 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;A quote without a book name.&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: General&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/no-book</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.category, .quote)
+        // Without a book <em>, reference should be nil (From: Topic: is excluded by negative lookahead)
+        XCTAssertNil(entry.reference, "Quote without book name should have nil reference")
+        XCTAssertTrue(entry.content.contains("without a book name"), "Content should be preserved")
+    }
+    
+    func testBreakTagPreservation() throws {
+        // Some entries use <br/> tags for line breaks
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>LINE BREAKS</title>
+                    <description>&lt;p&gt;Line one.&lt;/br&gt;Line two.&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/thoughts/breaks</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Thought</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let content = entries[0].content
+        XCTAssertFalse(content.contains("</br>"), "Break tags should be stripped")
+        XCTAssertTrue(content.contains("Line one"), "Content before break must be preserved")
+        XCTAssertTrue(content.contains("Line two"), "Content after break must be preserved")
+    }
+    
+    // MARK: - wisdom:source Namespace Tests
+    
+    func testParseWisdomSourceForQuote() throws {
+        // Quotes now include <wisdom:source> with the book name
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <item>
+                    <title>THE SALVATION</title>
+                    <description>&lt;p&gt;&lt;strong&gt;Level 2 Quote&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;THERE IS NO SALVATION APART FROM JESUS.&lt;/p&gt;&lt;p&gt;&lt;em&gt;The Narrow Way&lt;/em&gt;&lt;/p&gt;&lt;p&gt;&lt;em&gt;From: Topic: Topic: The Good News&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/the-salvation</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                    <category>Level 2</category>
+                    <wisdom:source>The Narrow Way</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        let entry = entries[0]
+        XCTAssertEqual(entry.category, .quote)
+        XCTAssertEqual(entry.reference, "The Narrow Way", "wisdom:source should provide the book name")
+        XCTAssertTrue(entry.content.contains("SALVATION"), "Core content must be preserved")
+    }
+    
+    func testWisdomSourceTakesPriorityOverFallback() throws {
+        // When both wisdom:source and <em> book name exist, wisdom:source wins
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel xmlns:wisdom="https://wisdombook.life/ns/1.0">
+                <item>
+                    <title>PRIORITY TEST</title>
+                    <description>&lt;p&gt;Content text.&lt;/p&gt;&lt;p&gt;&lt;em&gt;Fallback Book Name&lt;/em&gt;&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/quotes/priority</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Quote</category>
+                    <wisdom:source>Canonical Source</wisdom:source>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries[0].reference, "Canonical Source",
+                       "wisdom:source should take priority over <em> fallback")
+    }
+    
+    func testFallbackStillWorksWithoutWisdomSource() throws {
+        // Feeds without wisdom:source should still extract references via fallbacks
+        let xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>LEGACY - Proverbs 1:7</title>
+                    <description>&lt;p&gt;The fear of the LORD is the beginning of knowledge.&lt;/p&gt;</description>
+                    <link>https://wisdombook.life/passages/legacy</link>
+                    <pubDate>Thu, 13 Feb 2026 14:00:00 GMT</pubDate>
+                    <category>Passage</category>
+                </item>
+            </channel>
+        </rss>
+        """
+        
+        let data = xml.data(using: .utf8)!
+        let parser = RSSXMLParser(data: data)
+        let entries = try parser.parse()
+        
+        XCTAssertEqual(entries[0].title, "LEGACY", "Title should strip legacy suffix")
+        XCTAssertEqual(entries[0].reference, "Proverbs 1:7",
+                       "Legacy title-suffix extraction should still work as fallback")
     }
 }
 
