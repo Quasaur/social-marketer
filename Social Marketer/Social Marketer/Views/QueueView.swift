@@ -229,7 +229,7 @@ struct QueueRow: View {
             // Platform badges (from logs)
             if let logs = post.logs as? Set<PostLog> {
                 HStack(spacing: 4) {
-                    ForEach(Array(logs.prefix(3)), id: \.id) { log in
+                    ForEach(Array(logs.prefix(4)), id: \.id) { log in
                         if log.success {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.caption)
