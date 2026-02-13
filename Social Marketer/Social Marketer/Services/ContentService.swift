@@ -26,6 +26,7 @@ actor ContentService {
     /// Returns the count of new entries added
     @discardableResult
     func refreshContent() async throws -> Int {
+        let startTime = Date()
         logger.info("Refreshing content from RSS feed...")
         
         // Fetch from the main wisdom feed
@@ -33,12 +34,19 @@ actor ContentService {
             throw ContentError.invalidFeedURL
         }
         
+        let fetchStart = Date()
         let entries = try await rssParser.fetchFeed(url: feedURL)
-        logger.info("Fetched \(entries.count) entries from RSS feed")
+        let fetchTime = Date().timeIntervalSince(fetchStart)
+        logger.info("Fetched \(entries.count) entries in \(String(format: "%.2f", fetchTime))s")
         
         // Cache entries on main actor (Core Data requirement)
+        let cacheStart = Date()
         let newCount = await cacheEntries(entries)
-        logger.info("Cached \(newCount) new entries")
+        let cacheTime = Date().timeIntervalSince(cacheStart)
+        logger.info("Cached \(newCount) new entries in \(String(format: "%.2f", cacheTime))s")
+        
+        let totalTime = Date().timeIntervalSince(startTime)
+        logger.info("Total refresh time: \(String(format: "%.2f", totalTime))s")
         
         return newCount
     }
