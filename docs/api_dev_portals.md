@@ -127,7 +127,7 @@ Quick reference for obtaining API access for each V1 platform.
 1. Sign in with your Pinterest account
 2. Create a new App
 3. Fill in app details and set:
-   - Redirect URI: `socialmarketer://oauth/callback`
+   - Redirect URI: `http://localhost:8989/oauth/callback`
 4. Request access to:
    - **pins:write** (create pins)
    - **boards:read** (list boards for selection)
@@ -136,6 +136,8 @@ Quick reference for obtaining API access for each V1 platform.
 7. Get your **Board ID** from the board URL or API
 
 **Required Scopes**: `pins:write`, `boards:read`
+
+**Redirect Flow**: Uses localhost HTTP server (port 8989), same as Facebook, Instagram, and LinkedIn.
 
 ---
 
