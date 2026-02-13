@@ -195,11 +195,15 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         }
         
         // 4. Fallback: try extracting scripture reference from content text
+        // DISABLED: Causes catastrophic backtracking on some inputs
+        // All feeds now have <wisdom:source> so this is unnecessary
+        /*
         if reference == nil {
             print("[DEBUG] Calling extractReference...")
             reference = extractReference(from: currentContent)
             print("[DEBUG] extractReference done")
         }
+        */
         
         // Clean content
         print("[DEBUG] Calling cleanHTML...")
