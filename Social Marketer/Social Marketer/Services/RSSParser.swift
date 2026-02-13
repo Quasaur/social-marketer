@@ -101,21 +101,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         return f
     }()
     
-    // Pre-compiled regex patterns for cleanHTML, extractReference, and extractBookName
-    private static let brTagRegex = try! NSRegularExpression(pattern: "<br\\s*/?>", options: .caseInsensitive)
-    private static let htmlTagRegex = try! NSRegularExpression(pattern: "<[^>]+>", options: [])
-    private static let cdataOpenRegex = try! NSRegularExpression(pattern: "<!\\[CDATA\\[", options: [])
-    private static let cdataCloseRegex = try! NSRegularExpression(pattern: "\\]\\]>", options: [])
-    private static let thoughtHeaderRegex = try! NSRegularExpression(pattern: "(?m)^\\s*#\\s*Thought:.*$", options: [])
-    private static let languageMarkerRegex = try! NSRegularExpression(pattern: "\\[![^\\]]+\\]", options: [])
-    private static let nonEnglishRegex = try! NSRegularExpression(pattern: "(?s)(Llegará|C'est une|Es algo|Es una|वह दिन|यह एक|这是|邪恶|我们).*$", options: [])
-    private static let metadataTypeLevel = try! NSRegularExpression(pattern: "(?m)^\\s*(Thought|Quote|Passage|Introduction)\\s*-\\s*Level\\s*\\d+\\s*$", options: [])
-    private static let metadataLevelType = try! NSRegularExpression(pattern: "(?m)^\\s*Level\\s*\\d+\\s*(Thought|Quote|Passage|Introduction)\\s*$", options: [])
-    private static let metadataLevelRef = try! NSRegularExpression(pattern: "(?m)^\\s*Level\\s*\\d+\\s*-\\s*.*$", options: [])
-    private static let metadataLevelStandalone = try! NSRegularExpression(pattern: "(?m)^\\s*Level\\s*\\d+\\s*$", options: [])
-    private static let fromTopicRegex = try! NSRegularExpression(pattern: "(?m)^\\s*From:?\\s*Topic:?\\s*.*$", options: [])
-    private static let parentTopicRegex = try! NSRegularExpression(pattern: "(?m)^\\s*Parent\\s+Topic:?\\s*.*$", options: [])
-    private static let multiBlankLineRegex = try! NSRegularExpression(pattern: "\\n{3,}", options: [])
+    // Pre-compiled regex patterns for fallback extraction only
     private static let scriptureRefRegex = try! NSRegularExpression(pattern: "([1-3]?\\s?[A-Z][a-z]+(?:\\s+[a-z]+[A-Za-z]*)*\\s+\\d+:\\d+(?:[-,]\\d+)*)", options: .caseInsensitive)
     private static let bookNameRegex = try! NSRegularExpression(pattern: "<em>\\s*(?!Parent\\s+Topic)(?!Topic)(?!From)([^<]+?)\\s*</em>", options: .caseInsensitive)
     
@@ -245,45 +231,16 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     private func cleanHTML(_ html: String) -> String {
-        var text = html
-        let fullRange = { NSRange(text.startIndex..., in: text) }
-        // Convert paragraph and break tags to newlines first (preserves structure)
-        text = text.replacingOccurrences(of: "</p>", with: "\n", options: .caseInsensitive)
-        text = Self.brTagRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "\n")
-        // Remove remaining HTML tags and CDATA
-        text = Self.htmlTagRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        text = Self.cdataOpenRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        text = Self.cdataCloseRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Decode HTML entities
-        text = text.replacingOccurrences(of: "&amp;", with: "&")
-        text = text.replacingOccurrences(of: "&lt;", with: "<")
-        text = text.replacingOccurrences(of: "&gt;", with: ">")
-        text = text.replacingOccurrences(of: "&quot;", with: "\"")
-        text = text.replacingOccurrences(of: "&#39;", with: "'")
-        // Strip multilingual content markers and non-English translations
-        // Remove "# Thought: TITLE" header lines
-        text = Self.thoughtHeaderRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Remove language markers like [!Thought-en], [!Pensamiento-es], etc.
-        text = Self.languageMarkerRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Remove non-English text blocks: everything from first non-English marker to end
-        if let match = Self.nonEnglishRegex.firstMatch(in: text, range: fullRange()) {
-            let matchRange = Range(match.range, in: text)!
-            text = String(text[..<matchRange.lowerBound])
-        }
-        // Strip metadata lines: "Thought - Level 5", "Level 4 Passage", etc.
-        text = Self.metadataTypeLevel.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        text = Self.metadataLevelType.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Strip "Level N - Reference" lines
-        text = Self.metadataLevelRef.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Strip standalone "Level N" lines
-        text = Self.metadataLevelStandalone.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Strip "From: Topic: ..." and "Parent Topic: ..." lines
-        text = Self.fromTopicRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        text = Self.parentTopicRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "")
-        // Collapse multiple blank lines into one
-        text = Self.multiBlankLineRegex.stringByReplacingMatches(in: text, range: fullRange(), withTemplate: "\n\n")
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text
+        // RSS feed now outputs clean plain text content (as of Feb 13, 2026)
+        // Only need to decode HTML entities (required by RSS spec)
+        return html
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func extractReference(from content: String) -> String? {
