@@ -106,9 +106,11 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     func parse() throws -> [WisdomEntry] {
+        print("[DEBUG] XMLParser.parse() starting...")
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.parse()
+        print("[DEBUG] XMLParser.parse() completed, \(entries.count) entries")
         return entries
     }
     
