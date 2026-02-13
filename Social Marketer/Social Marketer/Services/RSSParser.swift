@@ -189,16 +189,22 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         
         // 3. Fallback: extract book name from <em> tag (standalone, not "Parent Topic")
         if reference == nil {
+            print("[DEBUG] Calling extractBookName...")
             reference = extractBookName(from: currentContent)
+            print("[DEBUG] extractBookName done")
         }
         
         // 4. Fallback: try extracting scripture reference from content text
         if reference == nil {
+            print("[DEBUG] Calling extractReference...")
             reference = extractReference(from: currentContent)
+            print("[DEBUG] extractReference done")
         }
         
         // Clean content
+        print("[DEBUG] Calling cleanHTML...")
         let cleanContent = cleanHTML(currentContent)
+        print("[DEBUG] cleanHTML done")
         
         // Parse date
         let pubDate = Self.dateFormatter.date(from: currentPubDate.trimmingCharacters(in: .whitespacesAndNewlines)) ?? Date()
