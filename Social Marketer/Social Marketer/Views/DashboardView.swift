@@ -21,8 +21,15 @@ struct DashboardView: View {
     ) private var recentPosts: FetchedResults<Post>
     
     @State private var isSchedulerInstalled = false
+    @State private var selectedPeriod: StatsPeriod = .allTime
+    @StateObject private var analytics: PostingAnalytics
     
     private let scheduler = PostScheduler()
+    
+    init() {
+        let context = PersistenceController.shared.container.viewContext
+        _analytics = StateObject(wrappedValue: PostingAnalytics(context: context))
+    }
     
     var body: some View {
         VStack(spacing: 24) {
@@ -70,6 +77,98 @@ struct DashboardView: View {
             }
             .padding(.horizontal)
             
+            // Analytics Section
+            if let stats = analytics.currentStats {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("Posting Analytics")
+                            .font(.title2.bold())
+                        
+                        Spacer()
+                        
+                        Picker("Period", selection: $selectedPeriod) {
+                            Text("7 Days").tag(StatsPeriod.last7Days)
+                            Text("30 Days").tag(StatsPeriod.last30Days)
+                            Text("All Time").tag(StatsPeriod.allTime)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 300)
+                        .onChange(of: selectedPeriod) { _, newValue in
+                            Task {
+                                await analytics.fetchStats(period: newValue)
+                            }
+                        }
+                    }
+                    
+                    // Overall Success Rate (Large)
+                    HStack(spacing: 16) {
+                        // Big success rate card
+                        VStack(spacing: 8) {
+                            Text(String(format: "%.1f%%", stats.successRate))
+                                .font(.system(size: 48, weight: .bold))
+                                .foregroundColor(successRateColor(stats.successRate))
+                            Text("Overall Success Rate")
+                                .font(.headline)
+                            Text("\(stats.successCount) of \(stats.totalAttempts) attempts")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(12)
+                        
+                        // Platform breakdown
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("By Platform")
+                                .font(.headline)
+                            
+                            ForEach(stats.platformStats) { platform in
+                                HStack {
+                                    Text(platform.name)
+                                        .font(.subheadline)
+                                    Spacer()
+                                    Text(String(format: "%.1f%%", platform.successRate))
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(successRateColor(platform.successRate))
+                                    Text("(\(platform.successCount)/\(platform.totalAttempts))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+                    
+                    //Top Errors
+                    if !stats.topErrors.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Top Errors")
+                                .font(.headline)
+                            
+                            ForEach(stats.topErrors.prefix(3), id: \.error) { errorItem in
+                                HStack {
+                                    Text(errorItem.error)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text("\(errorItem.count)")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            
             // Recent Errors
             ErrorLogView()
                 .frame(maxHeight: .infinity)
@@ -78,6 +177,7 @@ struct DashboardView: View {
         .onAppear {
             Task {
                 isSchedulerInstalled = await scheduler.isLaunchAgentInstalled
+                await analytics.fetchStats(period: selectedPeriod)
             }
         }
     }
@@ -107,6 +207,14 @@ struct DashboardView: View {
             guard let postedDate = post.postedDate else { return false }
             return postedDate >= startOfDay
         }.count
+    }
+    
+    private func successRateColor(_ rate: Double) -> Color {
+        switch rate {
+        case 90...100: return .green
+        case 70..<90: return .orange
+        default: return .red
+        }
     }
     
 
