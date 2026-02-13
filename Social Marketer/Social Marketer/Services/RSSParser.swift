@@ -135,9 +135,13 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     func parse() throws -> [WisdomEntry] {
+        let startTime = Date()
+        Log.rss.info("Starting XML parse...")
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.parse()
+        let parseTime = Date().timeIntervalSince(startTime)
+        Log.rss.info("XMLParser.parse() completed in \(String(format: "%.2f", parseTime))s, \(entries.count) entries")
         return entries
     }
     
