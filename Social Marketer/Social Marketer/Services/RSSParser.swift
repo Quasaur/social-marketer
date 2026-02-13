@@ -75,6 +75,7 @@ actor RSSParser {
 }
 
 /// XML parser for RSS feeds
+@preconcurrency
 final class RSSXMLParser: NSObject, XMLParserDelegate {
     
     // MARK: - Shared Formatters & Patterns (allocated once, reused across all entries)
