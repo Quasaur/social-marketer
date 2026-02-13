@@ -64,7 +64,7 @@ struct DashboardView: View {
                 )
                 DashboardCard(
                     title: "Next Post",
-                    value: isSchedulerInstalled ? "9:00 AM" : "—",
+                    value: isSchedulerInstalled ? nextPostTimeString : "—",
                     icon: "clock"
                 )
             }
@@ -86,6 +86,18 @@ struct DashboardView: View {
     
     private var enabledPlatformsCount: Int {
         platforms.filter { $0.isEnabled }.count
+    }
+    
+    private var nextPostTimeString: String {
+        var components = DateComponents()
+        components.hour = PostScheduler.scheduledHour
+        components.minute = PostScheduler.scheduledMinute
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        if let date = Calendar.current.date(from: components) {
+            return formatter.string(from: date)
+        }
+        return "\(PostScheduler.scheduledHour):\(String(format: "%02d", PostScheduler.scheduledMinute))"
     }
     
     private var todaysPostCount: Int {

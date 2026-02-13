@@ -75,8 +75,12 @@ actor ContentService {
         for entry in entries {
             // Check for duplicate by link
             let linkString = entry.link.absoluteString
-            if CachedWisdomEntry.findByLink(linkString, in: context) != nil {
-                continue // Skip duplicates
+            if let existing = CachedWisdomEntry.findByLink(linkString, in: context) {
+                // Update existing entry content (picks up improved cleaning)
+                existing.title = entry.title
+                existing.content = entry.content
+                existing.reference = entry.reference
+                continue
             }
             
             // Create new cached entry
@@ -84,9 +88,8 @@ actor ContentService {
             newCount += 1
         }
         
-        if newCount > 0 {
-            PersistenceController.shared.save()
-        }
+        // Always save (updates existing + inserts new)
+        PersistenceController.shared.save()
         
         return newCount
     }

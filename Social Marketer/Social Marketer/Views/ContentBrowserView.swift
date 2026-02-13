@@ -43,7 +43,7 @@ struct ContentBrowserView: View {
                         ProgressView()
                             .scaleEffect(0.8)
                     } else {
-                        Image(systemName: "arrow.clockwise")
+                        Label("Refresh", systemImage: "arrow.clockwise")
                     }
                 }
                 .buttonStyle(.bordered)
@@ -86,6 +86,12 @@ struct ContentBrowserView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
+        }
+        .onAppear {
+            // Auto-refresh if the library is empty (first launch)
+            if entries.isEmpty {
+                refreshContent()
+            }
         }
     }
     
@@ -288,19 +294,24 @@ struct ContentDetailSheet: View {
                         }
                     }
                     
+                    Divider()
+                    
+                    // Generate Graphic button
+                    Button {
+                        showingGraphicPreview = true
+                    } label: {
+                        Label("Generate Graphic", systemImage: "photo.artframe")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    
                     Spacer()
                 }
                 .padding()
             }
             .navigationTitle("Entry Details")
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingGraphicPreview = true
-                    } label: {
-                        Label("Generate Graphic", systemImage: "photo.artframe")
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }

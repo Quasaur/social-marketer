@@ -23,27 +23,26 @@ struct GraphicPreviewView: View {
     
     private let generator = QuoteGraphicGenerator()
     
+    private let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                // Template Picker
+                // Template Picker - 2 rows of 5
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Border Style")
                         .font(.headline)
                     
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(BorderTemplate.allCases) { template in
-                                TemplateButton(
-                                    template: template,
-                                    isSelected: selectedTemplate == template
-                                ) {
-                                    selectedTemplate = template
-                                    regenerate()
-                                }
+                    LazyVGrid(columns: gridColumns, spacing: 12) {
+                        ForEach(BorderTemplate.allCases) { template in
+                            TemplateButton(
+                                template: template,
+                                isSelected: selectedTemplate == template
+                            ) {
+                                selectedTemplate = template
+                                regenerate()
                             }
                         }
-                        .padding(.horizontal, 4)
                     }
                 }
                 .padding(.horizontal)
@@ -115,7 +114,7 @@ struct GraphicPreviewView: View {
                 )
             }
         }
-        .frame(minWidth: 600, minHeight: 700)
+        .frame(minWidth: 600, minHeight: 750)
         .onAppear {
             regenerate()
         }
@@ -124,7 +123,12 @@ struct GraphicPreviewView: View {
     // MARK: - Actions
     
     private func regenerate() {
-        generatedImage = generator.generate(from: entry, template: selectedTemplate)
+        // Clear and regenerate to force SwiftUI refresh
+        generatedImage = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            generatedImage = generator.generate(from: entry, template: selectedTemplate)
+        }
     }
     
     private func saveImage() {

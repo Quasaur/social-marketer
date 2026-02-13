@@ -150,8 +150,29 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
             category = .passage
         }
         
-        // Extract reference from content (e.g., "- Proverbs 3:27")
-        let reference = extractReference(from: currentContent)
+        // Extract reference: first try title (\"TITLE - Proverbs 3:27\"), then description
+        var titleText = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        var reference: String? = nil
+        
+        // Titles may contain reference after " - " (e.g., "SCORNERS - Proverbs 3:34")
+        if let dashRange = titleText.range(of: " - ", options: .backwards) {
+            let possibleRef = String(titleText[dashRange.upperBound...])
+            // Check if the part after " - " looks like a Scripture reference
+            if possibleRef.contains(":") {
+                reference = possibleRef.trimmingCharacters(in: .whitespacesAndNewlines)
+                titleText = String(titleText[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // For quotes: extract book name from <em> tag (standalone, not "Parent Topic")
+        if reference == nil {
+            reference = extractBookName(from: currentContent)
+        }
+        
+        // Fallback: try extracting scripture reference from content
+        if reference == nil {
+            reference = extractReference(from: currentContent)
+        }
         
         // Clean content
         let cleanContent = cleanHTML(currentContent)
@@ -163,7 +184,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         
         let entry = WisdomEntry(
             id: UUID(),
-            title: currentTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            title: titleText,
             content: cleanContent,
             reference: reference,
             link: URL(string: currentLink.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: "https://wisdombook.life")!,
@@ -175,23 +196,78 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     private func cleanHTML(_ html: String) -> String {
-        // Remove HTML tags and CDATA
         var text = html
+        // Convert paragraph and break tags to newlines first (preserves structure)
+        text = text.replacingOccurrences(of: "</p>", with: "\n", options: .caseInsensitive)
+        text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: .regularExpression)
+        // Remove remaining HTML tags and CDATA
         text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "<!\\[CDATA\\[", with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: "\\]\\]>", with: "", options: .regularExpression)
+        // Decode HTML entities
+        text = text.replacingOccurrences(of: "&amp;", with: "&")
+        text = text.replacingOccurrences(of: "&lt;", with: "<")
+        text = text.replacingOccurrences(of: "&gt;", with: ">")
+        text = text.replacingOccurrences(of: "&quot;", with: "\"")
+        text = text.replacingOccurrences(of: "&#39;", with: "'")
+        // Strip multilingual content markers and non-English translations
+        // Remove "# Thought: TITLE" header lines
+        text = text.replacingOccurrences(of: "(?m)^\\s*#\\s*Thought:.*$", with: "", options: .regularExpression)
+        // Remove language markers like [!Thought-en], [!Pensamiento-es], etc.
+        text = text.replacingOccurrences(of: "\\[![^\\]]+\\]", with: "", options: .regularExpression)
+        // Remove non-English text blocks: everything from first non-English marker to end of paragraph
+        // Non-English markers: Pensamiento, Pensée, सोचा, 思考
+        if let nonEnRange = text.range(of: "(?s)(Llegará|C'est une|Es algo|Es una|वह दिन|यह एक|这是|邪恶|我们).*$", options: .regularExpression) {
+            text = String(text[..<nonEnRange.lowerBound])
+        }
+        // Strip metadata lines: "Thought - Level 5", "Level 4 Passage", "Level 4 - Proverbs 3:34", etc.
+        text = text.replacingOccurrences(of: "(?m)^\\s*(Thought|Quote|Passage|Introduction)\\s*-\\s*Level\\s*\\d+\\s*$", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: "(?m)^\\s*Level\\s*\\d+\\s*(Thought|Quote|Passage|Introduction)\\s*$", with: "", options: .regularExpression)
+        // Strip "Level N - Reference" lines (e.g., "Level 4 - Proverbs 3:34")
+        text = text.replacingOccurrences(of: "(?m)^\\s*Level\\s*\\d+\\s*-\\s*.*$", with: "", options: .regularExpression)
+        // Strip standalone "Level N" lines
+        text = text.replacingOccurrences(of: "(?m)^\\s*Level\\s*\\d+\\s*$", with: "", options: .regularExpression)
+        // Strip "From: Topic: ..." and "Parent Topic: ..." lines
+        text = text.replacingOccurrences(of: "(?m)^\\s*From:?\\s*Topic:?\\s*.*$", with: "", options: .regularExpression)
+        text = text.replacingOccurrences(of: "(?m)^\\s*Parent\\s+Topic:?\\s*.*$", with: "", options: .regularExpression)
+        // Strip standalone book name lines (not preceded by content indicators)
+        // These are lines that are just a book title, like "The Narrow Way"
+        if let bookName = extractBookName(from: html) {
+            // Strip the plain-text version of the book name on its own line
+            let escaped = NSRegularExpression.escapedPattern(for: bookName)
+            text = text.replacingOccurrences(of: "(?m)^\\s*" + escaped + "\\s*$", with: "", options: .regularExpression)
+        }
+        // Collapse multiple blank lines into one
+        text = text.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return text
     }
     
     private func extractReference(from content: String) -> String? {
-        // Look for scripture references like "Proverbs 3:27"
-        let pattern = "([1-3]?\\s?[A-Z][a-z]+\\s\\d+:\\d+(?:[-,]\\d+)?)"
+        // Look for scripture references like "Proverbs 3:27", "1 Corinthians 13:4", "Proverbs 3:21-26"
+        let pattern = "([1-3]?\\s?[A-Z][a-z]+(?:\\s+[a-z]+[A-Za-z]*)*\\s+\\d+:\\d+(?:[-,]\\d+)*)"
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: content, range: NSRange(content.startIndex..., in: content)),
               let range = Range(match.range, in: content) else {
             return nil
         }
         return String(content[range])
+    }
+    
+    private func extractBookName(from content: String) -> String? {
+        // Look for standalone <em> tags that contain a book name (not "Parent Topic" or "Topic" lines)
+        // Pattern: <em>Book Name</em> where Book Name doesn't start with "Parent Topic" or "Topic"
+        let pattern = "<em>\\s*(?!Parent\\s+Topic)(?!Topic)(?!From)([^<]+?)\\s*</em>"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        
+        let matches = regex.matches(in: content, range: NSRange(content.startIndex..., in: content))
+        for match in matches {
+            guard let range = Range(match.range(at: 1), in: content) else { continue }
+            let name = String(content[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Skip if it looks like metadata
+            if name.hasPrefix("Level") || name.isEmpty { continue }
+            return name
+        }
+        return nil
     }
 }
