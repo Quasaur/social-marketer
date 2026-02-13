@@ -290,9 +290,72 @@ struct PlatformSettingsView: View {
                 )
                 try oauthManager.saveTokens(tokens, for: "pinterest")
                 connectionStatus["pinterest"] = .connected
+                
+                // Auto-discover boards for manual token users
+                Task {
+                    await discoverPinterestBoard(token: token.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
+            showingError = true
+        }
+    }
+    
+    private func discoverPinterestBoard(token: String) async {
+        do {
+            // Fetch boards from Pinterest API
+            let url = URL(string: "https://api.pinterest.com/v5/boards")!
+            var request = URLRequest(url: url)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                errorMessage = "Failed to fetch Pinterest boards: \(errorBody)"
+                showingError = true
+                return
+            }
+            
+            struct BoardsResponse: Decodable {
+                struct Board: Decodable {
+                    let id: String
+                    let name: String
+                }
+                let items: [Board]
+            }
+            
+            let boardsResponse = try JSONDecoder().decode(BoardsResponse.self, from: data)
+            
+            guard !boardsResponse.items.isEmpty else {
+                errorMessage = "No Pinterest boards found. Create a board on Pinterest first."
+                showingError = true
+                return
+            }
+            
+            // Prefer boards with "wisdom" first, then "book"
+            let targetBoard = boardsResponse.items.first(where: {
+                $0.name.localizedCaseInsensitiveContains("wisdom")
+            }) ?? boardsResponse.items.first(where: {
+                $0.name.localizedCaseInsensitiveContains("book")
+            }) ?? boardsResponse.items.first!
+            
+            // Save board to Keychain
+            struct PinterestCredentials: Codable {
+                let boardID: String
+                let boardName: String
+            }
+            
+            let boardCreds = PinterestCredentials(boardID: targetBoard.id, boardName: targetBoard.name)
+            try KeychainService.shared.save(boardCreds, for: "pinterest_board")
+            
+            // Show success
+            successMessage = "Pinterest board configured: \(targetBoard.name)"
+            showingSuccess = true
+            
+        } catch {
+            errorMessage = "Board discovery failed: \(error.localizedDescription)"
             showingError = true
         }
     }

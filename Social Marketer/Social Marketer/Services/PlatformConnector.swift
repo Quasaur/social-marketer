@@ -1266,9 +1266,10 @@ final class PinterestConnector: PlatformConnector {
             throw PlatformError.postFailed("No Pinterest boards found. Create a board on Pinterest first.")
         }
         
-        // Prefer "The Book of Wisdom" or boards with "wisdom" or "book" in the name
+        // Prefer boards with "wisdom" first, then "book"
         let targetBoard = boardsResponse.items.first(where: {
-            $0.name.localizedCaseInsensitiveContains("wisdom") ||
+            $0.name.localizedCaseInsensitiveContains("wisdom")
+        }) ?? boardsResponse.items.first(where: {
             $0.name.localizedCaseInsensitiveContains("book")
         }) ?? boardsResponse.items.first!
         
