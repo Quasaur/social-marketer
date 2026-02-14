@@ -125,19 +125,47 @@ Quick reference for obtaining API access for each V1 platform.
 **Setup Process**:
 
 1. Sign in with your Pinterest account
-2. Create a new App
-3. Fill in app details and set:
-   - Redirect URI: `http://localhost:8989/oauth/callback`
-4. Request access to:
-   - **pins:write** (create pins)
-   - **boards:read** (list boards for selection)
-5. Submit for review (Pinterest reviews all apps)
-6. Copy **App ID** and **App Secret**
-7. Get your **Board ID** from the board URL or API
+2. Create a new App → App name: **Social Marketer**
+3. In App Settings:
+   - **Redirect URI**: `http://localhost:8989/oauth/callback`
+   - ⚠️ Must use localhost - custom URL schemes not supported
+4. Upgrade to Standard Access:
+   - Click **"Upgrade access"** button
+   - Select use cases:
+     - ✅ **Pin creation & scheduling**
+     - ✅ **Pinners**
+     - ❌ Ad campaign management (uncheck this)
+   - Upload demo video showing:
+     - App interface
+     - OAuth connection flow
+     - Creating/scheduling a post
+     - (Video can show trial access error with note "Pending approval")
+   - Fill in app details
+   - Submit for review
+5. Copy **App ID** and **App Secret** from Settings
 
-**Required Scopes**: `pins:write`, `boards:read`
+**Required Scopes**: `boards:read`, `boards:write`, `pins:read`, `pins:write`
+
+> ⚠️ **OAuth Configuration**: Pinterest uses **Basic Authentication** for token exchange (not body parameters). Social Marketer automatically sends `Authorization: Basic [base64(client_id:client_secret)]` header.
+
+**Trial Access Limitations**:
+
+- Manual access tokens from "Generate Access Token" button only last 24 hours and have limited scopes
+- Trial access can only use sandbox API (`api-sandbox.pinterest.com`), not production
+- **OAuth flow works during trial**, but pins will fail with error about sandbox requirement
+- After approval, OAuth automatically gets production access token
+
+**Board Auto-Discovery**: After OAuth, the app automatically:
+
+1. Fetches all boards from Pinterest API (`/v5/boards`)
+2. Searches for boards containing "wisdom" (case-insensitive)
+3. Falls back to boards containing "book"
+4. Defaults to first available board
+5. Stores Board ID and Name in Keychain
 
 **Redirect Flow**: Uses localhost HTTP server (port 8989), same as Facebook, Instagram, and LinkedIn.
+
+**Approval Time**: Typically 1-7 days after video demo submission
 
 ---
 
