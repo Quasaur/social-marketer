@@ -23,6 +23,11 @@ struct ContentView: View {
                         .tag("queue")
                 }
                 
+                Section("Monitoring") {
+                    Label("Admin Dashboard", systemImage: "chart.bar.doc.horizontal")
+                        .tag("admin")
+                }
+                
                 Section("Configuration") {
                     Label("Platforms", systemImage: "square.stack.3d.up")
                         .tag("platforms")
@@ -43,6 +48,8 @@ struct ContentView: View {
                 ContentBrowserView()
             case "queue":
                 QueueView()
+            case "admin":
+                AdminDashboardView()
             case "platforms":
                 PlatformSettingsView()
             case "discovery":
