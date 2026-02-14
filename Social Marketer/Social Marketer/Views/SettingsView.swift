@@ -9,8 +9,6 @@ import SwiftUI
 import AppKit
 
 struct SettingsView: View {
-    @AppStorage("postingHour") private var postingHour = 9
-    @AppStorage("postingMinute") private var postingMinute = 0
     @AppStorage("includeHashtags") private var includeHashtags = true
     @AppStorage("includeEmoji") private var includeEmoji = true
     @AppStorage("debugModeEnabled") private var debugModeEnabled = false
@@ -24,34 +22,6 @@ struct SettingsView: View {
                 .padding(.horizontal)
             
             Form {
-                Section("Posting Schedule") {
-                    HStack {
-                        Text("Daily Post Time")
-                        Spacer()
-                        Picker("Hour", selection: $postingHour) {
-                            ForEach(0..<24) { hour in
-                                Text(String(format: "%02d", hour)).tag(hour)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 60)
-                        
-                        Text(":")
-                        
-                        Picker("Minute", selection: $postingMinute) {
-                            ForEach([0, 15, 30, 45], id: \.self) { minute in
-                                Text(String(format: "%02d", minute)).tag(minute)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 60)
-                    }
-                    
-                    Text("The scheduler runs daily at this time (your local timezone).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
                 Section("Post Formatting") {
                     Toggle("Include hashtags (#wisdom #wisdombook)", isOn: $includeHashtags)
                         .toggleStyle(.status)
