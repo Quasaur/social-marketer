@@ -26,47 +26,105 @@ Social Marketer identifies an RSS entry to post to video-compatible platforms:
 - Lemon8
 - Other video platforms
 
-### 2. Send to Social Effects
+### 2. Request Preparation
 
-Social Marketer sends either:
+Social Marketer:
 
-- **RSS link**, or
-- **RSS content** (title, body, source)
+1. Generates unique request ID (`{timestamp}_{uuid}`)
+2. Writes request JSON to shared folder:
+   - Path: `~/Library/Application Support/SocialEffects/requests/{requestId}.json`
+   - Content: RSS data, effect preferences, duration
 
-to Social Effects for video creation.
+**Request JSON Format:**
 
-**Communication Method**: TBD (options: XPC service, URL scheme, file drop)
+```json
+{
+  "requestId": "20260214_abc123",
+  "rssContent": {
+    "title": "True wisdom comes from questions",
+    "content": "...",
+    "source": "wisdombook.life"
+  },
+  "effects": {
+    "intro": "crossDissolve",
+    "ongoing": ["wordReveal", "lightLeaks"],
+    "outro": "circularCollapse"
+  },
+  "duration": 20,
+  "platforms": ["youtube", "tiktok"]
+}
+```
+
+1. Opens URL scheme to trigger Social Effects:
+   - `socialeffects://generate?requestId={requestId}`
+   - No large data in URL - just the request ID
 
 ### 3. Video Generation
 
 Social Effects:
 
-- Parses RSS content
-- Generates quote graphic with border style
-- Applies selected effects (intro, ongoing, outro)
-- Renders 15-30 second video (1080x1920 vertical)
-- Saves to shared resource folder
+1. Receives URL scheme, launches if needed
+2. Reads request JSON from shared folder using `requestId`
+3. Generates quote graphic with border style
+4. Applies selected effects (intro, ongoing, outro)
+5. Renders 15-30 second video (1080x1920 vertical)
+6. Saves video to: `~/Library/Application Support/SocialEffects/outputs/{requestId}.mp4`
+7. Writes response JSON: `~/Library/Application Support/SocialEffects/responses/{requestId}.json`
 
-**Shared Resource Folder**: `~/Library/Application Support/SocialEffects/outputs/`
+**Response JSON Format:**
+
+```json
+{
+  "requestId": "20260214_abc123",
+  "status": "success",
+  "videoPath": "~/Library/.../SocialEffects/outputs/20260214_abc123.mp4",
+  "duration": 22.5,
+  "fileSize": 15728640,
+  "format": "mp4",
+  "resolution": "1080x1920",
+  "effects": ["crossDissolve", "wordReveal", "lightLeaks", "circularCollapse"]
+}
+```
 
 ### 4. Notification
 
-Social Effects notifies Social Marketer:
+Social Effects posts distributed notification:
 
-- Video path
-- Video metadata (duration, size, format)
-- Generation status (success/failure)
-
-**Notification Method**: TBD (options: XPC callback, file system watcher, URL callback)
+- Notification name: `com.quasaur.socialeffects.videoReady`
+- User info: `{ "requestId": "20260214_abc123" }`
 
 ### 5. Import & Post
 
 Social Marketer:
 
-- Imports video from shared path
-- Adds platform-specific metadata (title, description, hashtags)
-- Posts to selected video platforms
-- Cleans up temporary video file (optional)
+1. Receives notification via `DistributedNotificationCenter`
+2. Reads response JSON from shared folder
+3. Imports video from path in response
+4. Adds platform-specific metadata (title, description, hashtags)
+5. Posts to selected video platforms
+6. Cleans up request/response files (optional)
+
+## Communication Method
+
+**URL Scheme + Shared Folder + Distributed Notifications**
+
+**Why this approach:**
+
+- ✅ URL scheme = Simple signaling (no length limits - just IDs)
+- ✅ Shared folder = Large data transfer (RSS content, videos)
+- ✅ Distributed notifications = Real-time status updates
+- ✅ Both apps stay completely independent
+- ✅ Easy to debug (inspect files)
+- ✅ Resilient (survives app restarts)
+
+**URL Scheme Registration:**
+Social Effects registers: `socialeffects://`
+
+**Commands:**
+
+- `socialeffects://generate?requestId={id}` - Generate video
+- `socialeffects://status?requestId={id}` - Check status (optional)
+- `socialeffects://cancel?requestId={id}` - Cancel generation (optional)
 
 ## Video Rendering Engines
 
