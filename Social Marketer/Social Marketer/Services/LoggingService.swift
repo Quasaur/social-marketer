@@ -47,6 +47,12 @@ enum Log {
     /// Pinterest connector
     static let pinterest    = Logger(subsystem: subsystem, category: "Pinterest")
 
+    /// YouTube API operations
+    static let youtube      = Logger(subsystem: subsystem, category: "YouTube")
+
+    /// TikTok API operations
+    static let tiktok       = Logger(subsystem: subsystem, category: "TikTok")
+
     /// OAuth authentication flows
     static let oauth        = Logger(subsystem: subsystem, category: "OAuth")
 

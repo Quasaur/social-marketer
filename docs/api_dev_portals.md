@@ -169,6 +169,45 @@ Quick reference for obtaining API access for each V1 platform.
 
 ---
 
+## YouTube
+
+**Portal**: <https://console.cloud.google.com>
+
+**Setup Process**:
+
+1. Sign in with your Google account (<quasaur@gmail.com>)
+2. Create a new **Google Cloud Project** → Project name: **Social Marketer**
+3. Enable **YouTube Data API v3**:
+   - Go to **APIs & Services** → **Library**
+   - Search for "YouTube Data API v3"
+   - Click **Enable**
+4. Configure **OAuth consent screen**:
+   - Go to **APIs & Services** → **OAuth consent screen**
+   - User type: **External** (for testing)
+   - App name: **Social Marketer**
+   - User support email: <quasaur@gmail.com>
+   - Developer contact: <quasaur@gmail.com>
+   - **Scopes**: Add `https://www.googleapis.com/auth/youtube.upload`
+   - **Test users**: Add <quasaur@gmail.com>
+5. Create **OAuth 2.0 Client ID**:
+   - Go to **APIs & Services** → **Credentials**
+   - Click **Create Credentials** → **OAuth client ID**
+   - Application type: **Desktop app** (or **Web application** with localhost redirect)
+   - Authorized redirect URIs: `http://localhost:8989/oauth/callback`
+   - Copy **Client ID** and **Client Secret**
+
+**Required Scope**: `https://www.googleapis.com/auth/youtube.upload`
+
+**Content Format**: YouTube requires video files. The app automatically converts static images into short videos (3-second MP4 at 30fps) using AVFoundation before upload.
+
+**Upload Endpoint**: `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status`
+
+**Redirect Flow**: Uses localhost HTTP server (port 8989), same as other OAuth 2.0 platforms.
+
+**Approval Time**: Instant for testing mode with test users configured
+
+---
+
 ## Summary Table
 
 | Platform | Portal | Key Credentials | Approval Time |
@@ -178,6 +217,7 @@ Quick reference for obtaining API access for each V1 platform.
 | Instagram | developers.facebook.com (Instagram API) | Instagram App ID, Instagram App Secret | Requires app review |
 | LinkedIn | developer.linkedin.com | Client ID, Client Secret | Instant - 24h |
 | Pinterest | developers.pinterest.com | App ID, App Secret | 1-7 days |
+| YouTube | console.cloud.google.com | Client ID, Client Secret | Instant (test mode) |
 
 ---
 

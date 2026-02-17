@@ -17,6 +17,11 @@ struct AdminDashboardView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var lastUpdated: Date?
+    @State private var membersPage = 0
+    @State private var tipsPage = 0
+    
+    private let membersPageSize = 10
+    private let tipsPageSize = 5
     
     private let adminService = WisdomBookAdminService()
     
@@ -63,7 +68,7 @@ struct AdminDashboardView: View {
     
     private var header: some View {
         HStack {
-            Text("Wisdom Book Dashboard")
+            Text("Wisdom Book Admin Dashboard")
                 .font(.title)
                 .fontWeight(.bold)
             
@@ -146,7 +151,10 @@ struct AdminDashboardView: View {
     // MARK: - Recent Members Section
     
     private var recentMembersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let totalPages = max(1, (members.count + membersPageSize - 1) / membersPageSize)
+        let pageMembers = Array(members.dropFirst(membersPage * membersPageSize).prefix(membersPageSize))
+        
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Recent Members")
                     .font(.headline)
@@ -162,53 +170,83 @@ struct AdminDashboardView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                ForEach(members) { member in
-                    memberRow(member)
-                }
-            }
-        }
-    }
-    
-    private func memberRow(_ member: WisdomBookAdminService.Member) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+                // Table header
                 HStack {
-                    Text(member.displayName)
-                        .font(.body)
-                        .fontWeight(.medium)
-                    
-                    if member.isGuardian {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(.yellow)
-                            .font(.caption)
+                    Text("Nickname")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Email Address")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 12)
+                
+                ForEach(pageMembers) { member in
+                    HStack {
+                        HStack(spacing: 6) {
+                            Text(member.displayName)
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .lineLimit(1)
+                            
+                            if member.isGuardian {
+                                Image(systemName: "star.fill")
+                                    .foregroundColor(.yellow)
+                                    .font(.caption2)
+                            }
+                            
+                            badgeForTier(member.kofiBadge)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Text(member.email)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    
-                    badgeForTier(member.kofiBadge)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    .cornerRadius(4)
                 }
                 
-                Text(member.email)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-            
-            if let date = member.joinedDate {
-                Text(date, style: .date)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                // Pagination
+                if totalPages > 1 {
+                    HStack {
+                        Button(action: { membersPage -= 1 }) {
+                            Image(systemName: "chevron.left")
+                        }
+                        .disabled(membersPage == 0)
+                        
+                        Spacer()
+                        Text("Page \(membersPage + 1) of \(totalPages)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        
+                        Button(action: { membersPage += 1 }) {
+                            Image(systemName: "chevron.right")
+                        }
+                        .disabled(membersPage >= totalPages - 1)
+                    }
+                    .padding(.top, 4)
+                }
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .cornerRadius(6)
     }
     
     // MARK: - Recent Tips Section
     
     private var recentTipsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let totalPages = max(1, (tips.count + tipsPageSize - 1) / tipsPageSize)
+        let pageTips = Array(tips.dropFirst(tipsPage * tipsPageSize).prefix(tipsPageSize))
+        
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Recent Ko-fi Tips")
                     .font(.headline)
@@ -224,8 +262,30 @@ struct AdminDashboardView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                ForEach(tips) { tip in
+                ForEach(pageTips) { tip in
                     tipRow(tip)
+                }
+                
+                // Pagination
+                if totalPages > 1 {
+                    HStack {
+                        Button(action: { tipsPage -= 1 }) {
+                            Image(systemName: "chevron.left")
+                        }
+                        .disabled(tipsPage == 0)
+                        
+                        Spacer()
+                        Text("Page \(tipsPage + 1) of \(totalPages)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        
+                        Button(action: { tipsPage += 1 }) {
+                            Image(systemName: "chevron.right")
+                        }
+                        .disabled(tipsPage >= totalPages - 1)
+                    }
+                    .padding(.top, 4)
                 }
             }
         }

@@ -2,178 +2,48 @@
 //  PostScheduler.swift
 //  SocialMarketer
 //
-//  Background scheduler for automated posting with launchd support
+//  Orchestrates scheduled and manual posting across platforms.
+//  Delegates to focused, single-responsibility collaborators:
+//    • LaunchdManager  — launchd agent lifecycle
+//    • VideoGenerator  — SocialEffects CLI invocation
+//    • CaptionBuilder  — caption / hashtag generation
+//    • PlatformRouter  — connector dispatch & posting loop
 //
 
 import Foundation
 import AppKit
 
-/// Manages scheduled posting across platforms
+/// Orchestrates scheduled posting across platforms.
+/// Thin facade — heavy lifting lives in LaunchdManager, VideoGenerator,
+/// CaptionBuilder, and PlatformRouter.
 @MainActor
 final class PostScheduler {
     
     private let logger = Log.scheduler
     private let googleIndexing = GoogleIndexingConnector()
+    private let launchd = LaunchdManager()
+    private let videoGen = VideoGenerator()
+    private let router = PlatformRouter()
     private var isRunning = false
     
-    // MARK: - launchd Configuration
+    // MARK: - Schedule Passthrough (preserves call-site compatibility)
     
-    private static let launchdLabel = "com.wisdombook.SocialMarketer"
-    private static let launchdPlistName = "com.wisdombook.SocialMarketer.plist"
-    
-    /// UserDefaults keys for configurable schedule time
-    static let scheduleHourKey = "launchd.scheduleHour"
-    static let scheduleMinuteKey = "launchd.scheduleMinute"
-    
-    /// Current schedule time (defaults to 9:00 AM)
     static var scheduledHour: Int {
-        get {
-            let stored = UserDefaults.standard.integer(forKey: scheduleHourKey)
-            // 0 is both the default and midnight — use a sentinel to distinguish
-            return UserDefaults.standard.object(forKey: scheduleHourKey) != nil ? stored : 9
-        }
-        set { UserDefaults.standard.set(newValue, forKey: scheduleHourKey) }
+        get { LaunchdManager.scheduledHour }
+        set { LaunchdManager.scheduledHour = newValue }
     }
     
     static var scheduledMinute: Int {
-        get { UserDefaults.standard.integer(forKey: scheduleMinuteKey) }
-        set { UserDefaults.standard.set(newValue, forKey: scheduleMinuteKey) }
+        get { LaunchdManager.scheduledMinute }
+        set { LaunchdManager.scheduledMinute = newValue }
     }
     
-    private static var launchAgentsURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents")
-    }
+    // MARK: - launchd Delegation
     
-    private static var installedPlistURL: URL {
-        launchAgentsURL.appendingPathComponent(launchdPlistName)
-    }
-    
-    // MARK: - Optimal Posting Times (EST)
-    
-    struct PostingSchedule {
-        static let twitter = DateComponents(hour: 9, minute: 0)
-        static let linkedin = DateComponents(hour: 10, minute: 0)
-        static let facebook = DateComponents(hour: 13, minute: 0)
-        static let instagram = DateComponents(hour: 18, minute: 0)
-        static let pinterest = DateComponents(hour: 14, minute: 0)
-    }
-    
-    // MARK: - launchd Management
-    
-    /// Check if the launch agent is installed
-    var isLaunchAgentInstalled: Bool {
-        FileManager.default.fileExists(atPath: Self.installedPlistURL.path)
-    }
-    
-    /// Auto-install or update the launch agent if the executable path or schedule has changed.
-    /// Called on every app launch to self-heal after DerivedData wipes or schedule changes.
-    func ensureLaunchAgentCurrent() {
-        guard isLaunchAgentInstalled else { return } // respect user's toggle choice
-        
-        // Read the installed plist and compare executable path + schedule
-        guard let data = try? Data(contentsOf: Self.installedPlistURL),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let args = plist["ProgramArguments"] as? [String],
-              let schedule = plist["StartCalendarInterval"] as? [String: Int] else {
-            // Can't read — reinstall
-            try? installLaunchAgent()
-            return
-        }
-        
-        let installedPath = args.first ?? ""
-        let currentPath = Bundle.main.executableURL?.path ?? ""
-        let installedHour = schedule["Hour"] ?? -1
-        let installedMinute = schedule["Minute"] ?? -1
-        
-        if installedPath != currentPath || installedHour != Self.scheduledHour || installedMinute != Self.scheduledMinute {
-            logger.info("Launch agent outdated — reinstalling (path or schedule changed)")
-            try? installLaunchAgent()
-        } else {
-            logger.debug("Launch agent is current")
-        }
-    }
-    
-    /// Install the launch agent for background scheduling
-    func installLaunchAgent() throws {
-        let fileManager = FileManager.default
-        
-        // Create LaunchAgents directory if needed
-        if !fileManager.fileExists(atPath: Self.launchAgentsURL.path) {
-            try fileManager.createDirectory(at: Self.launchAgentsURL, withIntermediateDirectories: true)
-        }
-        
-        // Get the actual executable path from the running app
-        guard let executableURL = Bundle.main.executableURL else {
-            throw SchedulerError.plistNotFound
-        }
-        
-        // Build plist dictionary with the actual app path
-        let plistDict: [String: Any] = [
-            "Label": Self.launchdLabel,
-            "ProgramArguments": [executableURL.path, "--scheduled-post"],
-            "StartCalendarInterval": ["Hour": Self.scheduledHour, "Minute": Self.scheduledMinute],
-            "RunAtLoad": false,
-            "KeepAlive": false,
-            "StandardOutPath": "/tmp/com.wisdombook.SocialMarketer.out.log",
-            "StandardErrorPath": "/tmp/com.wisdombook.SocialMarketer.err.log",
-            "EnvironmentVariables": ["PATH": "/usr/local/bin:/usr/bin:/bin"],
-            "WorkingDirectory": "/tmp",
-            "ProcessType": "Background",
-            "Nice": 10
-        ]
-        
-        // Write the plist
-        let plistData = try PropertyListSerialization.data(
-            fromPropertyList: plistDict,
-            format: .xml,
-            options: 0
-        )
-        
-        // Remove existing if present
-        if fileManager.fileExists(atPath: Self.installedPlistURL.path) {
-            // Unload first
-            let unloadProcess = Process()
-            unloadProcess.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            unloadProcess.arguments = ["unload", Self.installedPlistURL.path]
-            try? unloadProcess.run()
-            unloadProcess.waitUntilExit()
-            
-            try fileManager.removeItem(at: Self.installedPlistURL)
-        }
-        
-        try plistData.write(to: Self.installedPlistURL)
-        
-        // Load the agent
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["load", Self.installedPlistURL.path]
-        try process.run()
-        process.waitUntilExit()
-        
-        if process.terminationStatus != 0 {
-            throw SchedulerError.launchctlFailed("load")
-        }
-        
-        logger.info("Launch agent installed and loaded from \(executableURL.path)")
-    }
-    
-    /// Uninstall the launch agent
-    func uninstallLaunchAgent() throws {
-        // Unload the agent
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["unload", Self.installedPlistURL.path]
-        try process.run()
-        process.waitUntilExit()
-        
-        // Remove the plist
-        if FileManager.default.fileExists(atPath: Self.installedPlistURL.path) {
-            try FileManager.default.removeItem(at: Self.installedPlistURL)
-        }
-        
-        logger.info("Launch agent unloaded and removed")
-    }
+    var isLaunchAgentInstalled: Bool { launchd.isLaunchAgentInstalled }
+    func ensureLaunchAgentCurrent() { launchd.ensureLaunchAgentCurrent() }
+    func installLaunchAgent() throws { try launchd.installLaunchAgent() }
+    func uninstallLaunchAgent() throws { try launchd.uninstallLaunchAgent() }
     
     // MARK: - Scheduled Post Execution
     
@@ -217,14 +87,20 @@ final class PostScheduler {
             
             logger.info("Quote graphic saved to \(tempURL.path)")
             
+            // 3a. Generate video (RSS Integration)
+            let videoURL = try await videoGen.generateVideo(entry: entry)
+            
             // 4. Post to all enabled platforms
-            await postToAllPlatforms(entry: entry, imageURL: tempURL)
+            await router.postToAll(entry: entry, image: image, imageURL: tempURL, videoURL: videoURL, link: entry.link)
             
             // 5. Ping Google Search Console
             await pingGoogle(url: entry.link)
             
             // 6. Cleanup
             try? FileManager.default.removeItem(at: tempURL)
+            if let videoURL = videoURL {
+                try? FileManager.default.removeItem(at: videoURL)
+            }
             
             logger.info("Scheduled posting complete")
             
@@ -282,7 +158,7 @@ final class PostScheduler {
         for platform in enabledPlatforms {
             let platformName = platform.name ?? "Unknown"
             
-            guard let connector = connectorFor(platform) else { continue }
+            guard let connector = router.connectorFor(platform) else { continue }
             guard await connector.isConfigured else {
                 logger.warning("\(platformName) not configured for intro post, skipping")
                 continue
@@ -322,111 +198,36 @@ final class PostScheduler {
         PersistenceController.shared.save()
     }
     
-    // MARK: - Private Methods
+    // MARK: - Manual Thought Posting
     
-    /// Map a Core Data Platform to its API connector
-    private func connectorFor(_ platform: Platform) -> PlatformConnector? {
-        guard let name = platform.name else { return nil }
+    /// Post a user-composed Thought to all enabled platforms.
+    /// Called from GraphicPreviewView when "Post Now" is tapped.
+    /// Returns (successes, failures, error descriptions) so the UI can display accurate results.
+    func postManualThought(image: NSImage, caption: String, link: URL) async -> (successes: Int, failures: Int, errors: [String]) {
+        logger.info("🖊️ Manual Thought post initiated")
         
-        switch name {
-        case "X (Twitter)":
-            return TwitterConnector()
-        case "Instagram":
-            return InstagramConnector()
-        case "LinkedIn":
-            return LinkedInConnector()
-        case "Facebook":
-            return FacebookConnector()
-        case "Pinterest":
-            return PinterestConnector()
-        default:
-            logger.warning("Unknown platform: \(name)")
-            return nil
-        }
-    }
-    
-    /// Map a Core Data Platform to its OAuth platform ID (used for token lookup)
-    private func oauthPlatformID(for platform: Platform) -> String? {
-        switch platform.name {
-        case "X (Twitter)": return "twitter"
-        case "Instagram":   return "instagram"
-        case "LinkedIn":    return "linkedin"
-        case "Facebook":    return "facebook"
-        case "Pinterest":   return "pinterest"
-        default:            return nil
-        }
-    }
-    
-    private func postToAllPlatforms(entry: WisdomEntry, imageURL: URL) async {
-        let caption = buildCaption(from: entry)
+        // Save image to app support for the Post record
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let postDir = appSupport.appendingPathComponent("SocialMarketer/ManualThoughts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: postDir, withIntermediateDirectories: true)
+        let imageURL = postDir.appendingPathComponent("thought_\(Date().timeIntervalSince1970).png")
         
-        // Load image from saved URL
-        guard let image = NSImage(contentsOf: imageURL) else {
-            logger.error("Failed to load image from \(imageURL.path)")
-            return
+        let generator = QuoteGraphicGenerator()
+        do {
+            try generator.save(image, to: imageURL)
+        } catch {
+            logger.error("Failed to save manual thought image: \(error.localizedDescription)")
+            return (0, 0, ["Failed to save image: \(error.localizedDescription)"])
         }
         
-        // Get enabled platforms from Core Data
-        let context = PersistenceController.shared.viewContext
-        let enabledPlatforms = Platform.fetchEnabled(in: context)
+        let result = await router.postToAll(content: caption, image: image, imageURL: imageURL, link: link)
         
-        if enabledPlatforms.isEmpty {
-            logger.warning("No platforms enabled. Configure platforms in the app.")
-            return
+        // Ping Google if any platform succeeded
+        if result.successes > 0 {
+            await pingGoogle(url: link)
         }
         
-        // Create a Post record
-        let post = Post(context: context, content: entry.content, imageURL: imageURL, link: entry.link)
-        post.scheduledDate = Date()
-        
-        var anySuccess = false
-        
-        for platform in enabledPlatforms {
-            let platformName = platform.name ?? "Unknown"
-            logger.info("Posting to \(platformName)...")
-            
-            guard let connector = connectorFor(platform) else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "No connector for \(platformName)")
-                post.addToLogs(log)
-                continue
-            }
-            
-            // Check connector is configured (loads credentials from Keychain)
-            guard await connector.isConfigured else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "Not configured — connect in Platforms settings")
-                post.addToLogs(log)
-                logger.warning("\(platformName) not configured, skipping")
-                continue
-            }
-            
-            do {
-                let result = try await connector.post(image: image, caption: caption, link: entry.link)
-                
-                if result.success {
-                    let log = PostLog(context: context, post: post, platform: platform, postID: result.postID, postURL: result.postURL)
-                    post.addToLogs(log)
-                    platform.lastPostDate = Date()
-                    anySuccess = true
-                    logger.info("✅ Posted to \(platformName): \(result.postID ?? "no ID")")
-                } else {
-                    let errorMsg = result.error?.localizedDescription ?? "Unknown error"
-                    let log = PostLog(context: context, post: post, platform: platform, error: errorMsg)
-                    post.addToLogs(log)
-                    logger.error("❌ Failed to post to \(platformName): \(errorMsg)")
-                }
-            } catch {
-                let log = PostLog(context: context, post: post, platform: platform, error: error.localizedDescription)
-                post.addToLogs(log)
-                logger.error("❌ Error posting to \(platformName): \(error.localizedDescription)")
-            }
-        }
-        
-        // Update post status
-        post.postStatus = anySuccess ? .posted : .failed
-        post.postedDate = anySuccess ? Date() : nil
-        
-        PersistenceController.shared.save()
-        logger.info("Post results saved — \(anySuccess ? "at least one platform succeeded" : "all platforms failed")")
+        return result
     }
     
     // MARK: - Queue Processing
@@ -457,12 +258,12 @@ final class PostScheduler {
         }
         
         for post in duePosts {
-            await postFromQueue(post, to: enabledPlatforms, in: context)
+            await postFromQueue(post, to: enabledPlatforms)
         }
     }
     
-    /// Post a single queued post to all enabled platforms
-    private func postFromQueue(_ post: Post, to platforms: [Platform], in context: NSManagedObjectContext) async {
+    /// Post a single queued post to all enabled platforms — delegates to PlatformRouter
+    private func postFromQueue(_ post: Post, to platforms: [Platform]) async {
         guard let content = post.content else {
             logger.warning("Skipping post with no content")
             post.postStatus = .failed
@@ -477,73 +278,20 @@ final class PostScheduler {
         }
         
         let link = post.link ?? URL(string: "https://wisdombook.life")!
-        var anySuccess = false
         
-        for platform in platforms {
-            let platformName = platform.name ?? "Unknown"
-            
-            guard let connector = connectorFor(platform) else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "No connector for \(platformName)")
-                post.addToLogs(log)
-                continue
-            }
-            
-            guard await connector.isConfigured else {
-                let log = PostLog(context: context, post: post, platform: platform, error: "Not configured")
-                post.addToLogs(log)
-                continue
-            }
-            
-            do {
-                // If we have an image, post with image. Otherwise post text-only.
-                if let img = image {
-                    let result = try await connector.post(image: img, caption: content, link: link)
-                    
-                    if result.success {
-                        let log = PostLog(context: context, post: post, platform: platform, postID: result.postID, postURL: result.postURL)
-                        post.addToLogs(log)
-                        platform.lastPostDate = Date()
-                        anySuccess = true
-                        logger.info("✅ Queue: Posted to \(platformName)")
-                    } else {
-                        let errorMsg = result.error?.localizedDescription ?? "Unknown error"
-                        let log = PostLog(context: context, post: post, platform: platform, error: errorMsg)
-                        post.addToLogs(log)
-                    }
-                } else {
-                    // No image — log as skipped for now
-                    let log = PostLog(context: context, post: post, platform: platform, error: "No image available for post")
-                    post.addToLogs(log)
-                    logger.warning("Skipped \(platformName) — no image")
-                }
-            } catch {
-                let log = PostLog(context: context, post: post, platform: platform, error: error.localizedDescription)
-                post.addToLogs(log)
-                logger.error("❌ Queue: Error posting to \(platformName): \(error.localizedDescription)")
-            }
-        }
-        
-        post.postStatus = anySuccess ? .posted : .failed
-        post.postedDate = anySuccess ? Date() : nil
-        PersistenceController.shared.save()
+        let result = await router.postToAll(
+            content: content,
+            image: image,
+            imageURL: post.imageURL,
+            link: link,
+            platforms: platforms,
+            post: post
+        )
         
         // Ping Google if any platform succeeded
-        if anySuccess, let link = post.link {
+        if result.successes > 0 {
             await pingGoogle(url: link)
         }
-    }
-    
-    private func buildCaption(from entry: WisdomEntry) -> String {
-        var caption = entry.content
-        
-        if let reference = entry.reference {
-            caption += "\n\n— \(reference)"
-        }
-        
-        caption += "\n\n🔗 \(entry.link.absoluteString)"
-        caption += "\n\n#wisdom #wisdombook #dailywisdom"
-        
-        return caption
     }
     
     // MARK: - Google Search Console
@@ -560,22 +308,6 @@ final class PostScheduler {
             logger.info("✅ Google Search Console pinged: \(url.absoluteString)")
         } catch {
             logger.error("⚠️ Google ping failed (non-blocking): \(error.localizedDescription)")
-        }
-    }
-}
-
-// MARK: - Errors
-
-enum SchedulerError: Error, LocalizedError {
-    case plistNotFound
-    case launchctlFailed(String)
-    
-    var errorDescription: String? {
-        switch self {
-        case .plistNotFound:
-            return "Launch agent plist not found in app bundle"
-        case .launchctlFailed(let command):
-            return "launchctl \(command) failed"
         }
     }
 }

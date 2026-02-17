@@ -106,6 +106,19 @@ final class OAuthManager: NSObject, ObservableObject {
                 usePKCE: false
             )
         }
+        
+        static func youtube(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "youtube",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
+                tokenURL: URL(string: "https://oauth2.googleapis.com/token")!,
+                redirectURI: "http://localhost:8989/oauth/callback",
+                scopes: ["https://www.googleapis.com/auth/youtube.upload"],
+                usePKCE: false
+            )
+        }
     }
     
     // MARK: - API Credentials (stored in Keychain)
@@ -189,6 +202,11 @@ final class OAuthManager: NSObject, ObservableObject {
                 throw OAuthError.missingCredentials("Pinterest requires App Secret")
             }
             return .pinterest(clientID: creds.clientID, clientSecret: secret)
+        case "youtube":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("YouTube requires Client Secret")
+            }
+            return .youtube(clientID: creds.clientID, clientSecret: secret)
         default:
             throw OAuthError.missingCredentials("Unknown platform: \(platform)")
         }

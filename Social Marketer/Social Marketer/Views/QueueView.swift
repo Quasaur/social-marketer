@@ -27,6 +27,7 @@ struct QueueView: View {
     @State private var showingResult = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var showingComposeThought = false
     @State private var schedulerInstalled = false
     @State private var scheduledTime: Date = {
         var components = DateComponents()
@@ -52,7 +53,7 @@ struct QueueView: View {
             
             // Action Buttons
             HStack(spacing: 12) {
-                // Manual Post button
+                // Manual Post button (fetches from RSS)
                 Button {
                     Task { await postNow() }
                 } label: {
@@ -70,6 +71,19 @@ struct QueueView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(isPosting)
                 .help("Fetch random wisdom from RSS, generate graphic, and post to all connected platforms")
+                
+                // Manual Thought button (compose from scratch)
+                Button {
+                    showingComposeThought = true
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.pencil")
+                        Text("Manual Thought")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isPosting)
+                .help("Compose a custom Thought, preview the graphic, and post to all connected platforms")
                 
                 Spacer()
                 
@@ -151,6 +165,10 @@ struct QueueView: View {
             Button("OK") {}
         } message: {
             Text(errorMessage)
+        }
+        .sheet(isPresented: $showingComposeThought) {
+            ComposeThoughtView()
+                .environment(\.managedObjectContext, viewContext)
         }
     }
     

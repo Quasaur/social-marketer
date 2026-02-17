@@ -23,6 +23,7 @@ struct DashboardView: View {
     @State private var isSchedulerInstalled = false
     @State private var selectedPeriod: StatsPeriod = .allTime
     @StateObject private var analytics: PostingAnalytics
+    @StateObject private var connectionHealth = ConnectionHealthService()
     
     private let scheduler = PostScheduler()
     
@@ -32,6 +33,8 @@ struct DashboardView: View {
     }
     
     var body: some View {
+        ScrollViewReader { proxy in
+        ScrollView {
         VStack(spacing: 24) {
             // Header
             HStack {
@@ -56,6 +59,7 @@ struct DashboardView: View {
                 }
             }
             .padding(.horizontal)
+            .id("dashboard-top")
             
             // Stats Cards
             HStack(spacing: 16) {
@@ -76,6 +80,10 @@ struct DashboardView: View {
                 )
             }
             .padding(.horizontal)
+            
+            // Connection Health Panel
+            ConnectionStatusPanel(service: connectionHealth)
+                .padding(.horizontal)
             
             // Analytics Section
             if let stats = analytics.currentStats {
@@ -120,7 +128,7 @@ struct DashboardView: View {
                         
                         // Platform breakdown
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("By Platform")
+                            Text("Success by Platform")
                                 .font(.headline)
                             
                             ForEach(stats.platformStats) { platform in
@@ -171,14 +179,18 @@ struct DashboardView: View {
             
             // Recent Errors
             ErrorLogView()
-                .frame(maxHeight: .infinity)
         }
         .padding(.top)
+        .padding(.bottom)
+        }
         .onAppear {
+            proxy.scrollTo("dashboard-top", anchor: .top)
             Task {
                 isSchedulerInstalled = await scheduler.isLaunchAgentInstalled
                 await analytics.fetchStats(period: selectedPeriod)
+                await connectionHealth.checkAll()
             }
+        }
         }
     }
     
@@ -253,4 +265,101 @@ struct DashboardCard: View {
 #Preview {
     DashboardView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+}
+
+// MARK: - Connection Status Panel
+
+struct ConnectionStatusPanel: View {
+    @ObservedObject var service: ConnectionHealthService
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("External Connections")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if service.isChecking {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Checking…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    let issues = service.issueCount
+                    if issues > 0 {
+                        Text("\(issues) unreachable")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if !service.results.isEmpty {
+                        Text("All connected")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                    
+                    Button {
+                        Task { await service.checkAll() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Recheck connections")
+                }
+            }
+            
+            if !service.results.isEmpty {
+                let grouped = Dictionary(grouping: service.results) { $0.category }
+                let categories = ConnectionResult.ConnectionCategory.allCases.filter { grouped[$0] != nil }
+                
+                LazyVGrid(columns: [
+                    GridItem(.flexible(), spacing: 12),
+                    GridItem(.flexible(), spacing: 12)
+                ], spacing: 10) {
+                    ForEach(categories, id: \.self) { category in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 4) {
+                                Image(systemName: category.icon)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text(category.rawValue)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+                            }
+                            
+                            ForEach(grouped[category] ?? []) { result in
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(result.reachable ? Color.green : Color.red)
+                                        .frame(width: 7, height: 7)
+                                    Text(result.name)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    if let ms = result.latencyMs {
+                                        Text("\(ms)ms")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    } else {
+                                        Text("—")
+                                            .font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.secondary.opacity(0.06))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.05))
+        .cornerRadius(12)
+    }
 }

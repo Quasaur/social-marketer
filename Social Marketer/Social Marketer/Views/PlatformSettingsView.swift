@@ -262,6 +262,7 @@ struct PlatformSettingsView: View {
             )
             try oauthManager.saveAPICredentials(creds, for: platform.id)
             credentialStatus[platform.id] = true
+            CredentialBackupManager.shared.autoBackup()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true
@@ -277,6 +278,7 @@ struct PlatformSettingsView: View {
             )
             try oauthManager.saveAPICredentials(creds, for: "pinterest")
             credentialStatus["pinterest"] = true
+            CredentialBackupManager.shared.autoBackup()
             
             // If manual access token provided, save it directly
             if let token = accessToken, !token.isEmpty {
@@ -371,6 +373,7 @@ struct PlatformSettingsView: View {
             try oauthManager.saveTwitterOAuth1Credentials(creds)
             credentialStatus["twitter"] = true
             connectionStatus["twitter"] = .connected
+            CredentialBackupManager.shared.autoBackup()
         } catch {
             errorMessage = error.localizedDescription
             showingError = true

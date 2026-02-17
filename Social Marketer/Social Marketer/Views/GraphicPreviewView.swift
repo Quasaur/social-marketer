@@ -10,13 +10,17 @@ import AppKit
 
 struct GraphicPreviewView: View {
     let entry: CachedWisdomEntry
+    var isManualThought: Bool = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.managedObjectContext) private var viewContext
     
     @State private var selectedTemplate: BorderTemplate = .artDeco
     @State private var generatedImage: NSImage? = nil
     @State private var isSaving = false
+    @State private var isPosting = false
     @State private var showingSaveSuccess = false
+    @State private var showingPostResult = false
+    @State private var postResultMessage = ""
     @State private var showingQueueSheet = false
     @State private var scheduledDate = Date()
     @State private var showingQueueSuccess = false
@@ -82,11 +86,33 @@ struct GraphicPreviewView: View {
                     .buttonStyle(.bordered)
                     .disabled(generatedImage == nil || isSaving)
                     
-                    Button(action: { showingQueueSheet = true }) {
-                        Label("Add to Queue", systemImage: "tray.and.arrow.up")
+                    if isManualThought {
+                        Button(action: { Task { await postNow() } }) {
+                            if isPosting {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Posting...")
+                            } else {
+                                Label("Post Now", systemImage: "paperplane.fill")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(generatedImage == nil || isPosting)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(generatedImage == nil)
+                    
+                    if isManualThought {
+                        Button(action: { showingQueueSheet = true }) {
+                            Label("Add to Queue", systemImage: "tray.and.arrow.up")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(generatedImage == nil)
+                    } else {
+                        Button(action: { showingQueueSheet = true }) {
+                            Label("Add to Queue", systemImage: "tray.and.arrow.up")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(generatedImage == nil)
+                    }
                 }
                 .padding(.bottom)
             }
@@ -101,6 +127,11 @@ struct GraphicPreviewView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text("Quote graphic saved to Desktop.")
+            }
+            .alert("Post Result", isPresented: $showingPostResult) {
+                Button("OK", role: .cancel) { dismiss() }
+            } message: {
+                Text(postResultMessage)
             }
             .alert("Queued!", isPresented: $showingQueueSuccess) {
                 Button("OK", role: .cancel) { dismiss() }
@@ -153,6 +184,46 @@ struct GraphicPreviewView: View {
                 }
             }
         }
+    }
+    
+    private func postNow() async {
+        guard let image = generatedImage else { return }
+        isPosting = true
+        defer { isPosting = false }
+        
+        let caption = buildCaption()
+        let link = entry.link ?? URL(string: "https://www.wisdombook.life")!
+        
+        let scheduler = PostScheduler()
+        let result = await scheduler.postManualThought(image: image, caption: caption, link: link)
+        
+        entry.markAsUsed()
+        PersistenceController.shared.save()
+        
+        // Build accurate result message
+        if result.failures == 0 && result.successes > 0 {
+            postResultMessage = "Thought posted to \(result.successes) platform\(result.successes == 1 ? "" : "s") successfully! 🎉"
+        } else if result.successes > 0 {
+            postResultMessage = "Posted to \(result.successes) platform\(result.successes == 1 ? "" : "s"), but \(result.failures) failed:\n\n\(result.errors.joined(separator: "\n"))"
+        } else {
+            postResultMessage = "All posts failed:\n\n\(result.errors.joined(separator: "\n"))"
+        }
+        showingPostResult = true
+    }
+    
+    private func buildCaption() -> String {
+        var caption = entry.content ?? ""
+        
+        if let reference = entry.reference, !reference.isEmpty {
+            caption += "\n\n— \(reference)"
+        }
+        
+        if let link = entry.link {
+            caption += "\n\n🔗 \(link.absoluteString)"
+        }
+        
+        caption += "\n\n#wisdom #wisdombook #dailywisdom"
+        return caption
     }
     
     private func addToQueue() {
