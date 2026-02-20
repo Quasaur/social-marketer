@@ -2,77 +2,90 @@
 //  VideoGenerator.swift
 //  SocialMarketer
 //
-//  Invokes the SocialEffects CLI to generate videos for wisdom entries.
-//  Extracted from PostScheduler.swift to follow Single Responsibility Principle.
+//  Generates videos by integrating with SocialEffects HTTP API.
+//  Updated to use API server instead of direct CLI invocation.
 //
 
 import Foundation
 
-/// Generates videos by invoking the SocialEffects CLI tool.
+/// Generates videos using the SocialEffects HTTP API.
+/// Handles complete lifecycle: start server → generate video → shutdown server.
 @MainActor
 final class VideoGenerator {
     
     private let logger = Log.scheduler
+    private let socialEffectsService = SocialEffectsService.shared
     
-    /// Invokes the SocialEffects CLI to generate a video for the entry
+    /// Generates a video for the entry using SocialEffects API
+    /// - Parameter entry: The wisdom entry to convert to video
+    /// - Returns: URL to the generated video file, or nil if generation failed
     func generateVideo(entry: WisdomEntry) async throws -> URL? {
-        logger.info("🎬 invoking SocialEffects generate-video...")
+        logger.info("🎬 Starting video generation via SocialEffects API...")
         
-        let process = Process()
-        // Assume 'SocialEffects' is in the path or build dir.
-        // For development, valid path to executable is required.
-        // We'll try a few common locations or assume it's in a known dev path.
-        // Ideally this should be a bundled XPC service, but for CLI integration:
-        let possiblePaths = [
-            "/Users/quasaur/Developer/social-effects/.build/debug/SocialEffects",
-            "/usr/local/bin/SocialEffects"
-        ]
+        // Convert WisdomEntry to RSSItem format expected by API
+        let rssItem = RSSItem(
+            title: entry.title,
+            content: entry.content,
+            contentType: entry.contentType ?? "thought",
+            nodeTitle: entry.nodeTitle ?? sanitizeTitle(entry.title),
+            source: entry.reference ?? "wisdombook.life",
+            pubDate: entry.pubDate ?? Date()
+        )
         
-        guard let executablePath = possiblePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            logger.error("SocialEffects executable not found. Build it first.")
-            return nil
+        do {
+            // Use the full workflow that manages server lifecycle
+            let videoPath = try await socialEffectsService.executeFullWorkflow(from: rssItem)
+            
+            logger.info("✅ Video generated at: \(videoPath)")
+            return URL(fileURLWithPath: videoPath)
+            
+        } catch SocialEffectsError.serverStartFailed {
+            logger.error("❌ Failed to start SocialEffects server")
+            throw VideoGenerationError.serverUnavailable
+        } catch SocialEffectsError.serverNotRunning {
+            logger.error("❌ SocialEffects server not responding")
+            throw VideoGenerationError.serverUnavailable
+        } catch SocialEffectsError.generationFailed(let message) {
+            logger.error("❌ Video generation failed: \(message)")
+            throw VideoGenerationError.generationFailed(message)
+        } catch {
+            logger.error("❌ Unexpected error: \(error.localizedDescription)")
+            throw VideoGenerationError.unknown(error)
+        }
+    }
+    
+    /// Alternative method: Manual lifecycle control
+    /// Use this if you need to generate multiple videos in a batch
+    func generateVideoWithManualLifecycle(entry: WisdomEntry) async throws -> URL? {
+        logger.info("🎬 Starting batch video generation...")
+        
+        let rssItem = RSSItem(
+            title: entry.title,
+            content: entry.content,
+            contentType: entry.contentType ?? "thought",
+            nodeTitle: entry.nodeTitle ?? sanitizeTitle(entry.title),
+            source: entry.reference ?? "wisdombook.life",
+            pubDate: entry.pubDate ?? Date()
+        )
+        
+        // Start server manually
+        let processManager = SocialEffectsProcessManager.shared
+        let started = try await processManager.startServer()
+        guard started else {
+            throw VideoGenerationError.serverUnavailable
         }
         
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = [
-            "generate-video",
-            "--title", entry.title,
-            "--content", entry.content,
-            "--source", entry.reference ?? "wisdombook.life",
-            "--background", "auto", // implementation handles rotation
-            "--border", getNextBorderStyle(),
-            "--output-json"
-        ]
-        
-        // Pass environment variables (API Keys)
-        process.environment = ProcessInfo.processInfo.environment
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        
-        try process.run()
-        process.waitUntilExit()
-        
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        
-        if process.terminationStatus == 0, let output = String(data: data, encoding: .utf8) {
-            // Parse JSON output
-            // Expected: { "success": true, "videoPath": "..." }
-            if let jsonData = output.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-               let success = json["success"] as? Bool, success,
-               let path = json["videoPath"] as? String {
-                
-                logger.info("✅ Video generated at: \(path)")
-                return URL(fileURLWithPath: path)
+        defer {
+            // Ensure shutdown happens
+            Task {
+                await socialEffectsService.shutdown()
             }
         }
         
-        logger.error("Video generation failed or invalid output")
-        if let errOut = String(data: data, encoding: .utf8) {
-             logger.error("Output: \(errOut)")
-        }
-        return nil
+        // Generate video
+        let videoPath = try await socialEffectsService.generateVideo(from: rssItem)
+        
+        return URL(fileURLWithPath: videoPath)
     }
     
     /// Get the next border style in the rotation
@@ -100,4 +113,31 @@ final class VideoGenerator {
         logger.info("🎨 Next video border style: \(next)")
         return next
     }
+    
+    /// Sanitizes a title for use as a node name
+    /// Converts to Initial_Caps_With_Underscores format
+    private func sanitizeTitle(_ title: String) -> String {
+        // Remove special characters, keep alphanumeric and spaces
+        let allowedChars = CharacterSet.alphanumerics.union(.whitespaces)
+        let sanitized = title.components(separatedBy: allowedChars.inverted).joined(separator: " ")
+        
+        // Split by whitespace and capitalize each word
+        let words = sanitized.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        
+        let capitalizedWords = words.map { word in
+            let first = word.prefix(1).uppercased()
+            let rest = word.dropFirst().lowercased()
+            return first + rest
+        }
+        
+        return capitalizedWords.joined(separator: "_")
+    }
+}
+
+/// Errors that can occur during video generation
+enum VideoGenerationError: Error {
+    case serverUnavailable
+    case generationFailed(String)
+    case unknown(Error)
 }
