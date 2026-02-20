@@ -662,6 +662,10 @@ struct PlatformSettingsView: View {
     
     // MARK: - YouTube Test Post
     
+    /// Path to the most recently generated video from Social Effects
+    /// Update this path when testing with a new video
+    private let testVideoPath = "/Volumes/My Passport/social-media-content/social-effects/video/api/thought-Direct_Binary-1771607724.mp4"
+    
     private func testYouTubePost() async {
         youtubeTesting = true
         defer { youtubeTesting = false }
@@ -674,7 +678,7 @@ struct PlatformSettingsView: View {
                 return
             }
             
-            // 1. Fetch daily wisdom from RSS
+            // 1. Fetch daily wisdom from RSS for caption
             let rssParser = RSSParser()
             guard let entry = try await rssParser.fetchDaily() else {
                 errorMessage = "No daily wisdom entry available from RSS feed."
@@ -682,7 +686,7 @@ struct PlatformSettingsView: View {
                 return
             }
             
-            // 2. Generate quote graphic
+            // 2. Generate quote graphic for thumbnail
             let generator = QuoteGraphicGenerator()
             guard let image = generator.generate(from: entry) else {
                 errorMessage = "Failed to generate quote graphic."
@@ -690,13 +694,17 @@ struct PlatformSettingsView: View {
                 return
             }
             
-            // 3. Generate video via Social Effects
-            let videoGenerator = VideoGenerator()
-            guard let videoURL = try await videoGenerator.generateVideo(entry: entry) else {
-                errorMessage = "Failed to generate video via Social Effects."
+            // 3. Use the EXISTING video from Social Effects (no new generation)
+            let videoURL = URL(fileURLWithPath: testVideoPath)
+            
+            // Verify video exists
+            guard FileManager.default.fileExists(atPath: testVideoPath) else {
+                errorMessage = "Test video not found at: \(testVideoPath)"
                 showingError = true
                 return
             }
+            
+            print("🎬 Using existing video: \(testVideoPath)")
             
             // 4. Build caption
             let caption = """
