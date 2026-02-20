@@ -34,6 +34,9 @@ struct PlatformSettingsView: View {
     // Pinterest test state
     @State private var pinterestTesting = false
     
+    // YouTube test state
+    @State private var youtubeTesting = false
+    
     // Tier expansion state
     @State private var tier2Expanded = false
     @State private var tier3Expanded = false
@@ -64,7 +67,9 @@ struct PlatformSettingsView: View {
         PlatformInfo(id: "instagram", name: "Instagram", icon: "camera", color: .purple,
                      requiresSecret: true, clientIDLabel: "Instagram App ID", clientSecretLabel: "Instagram App Secret"),
         PlatformInfo(id: "pinterest", name: "Pinterest", icon: "pin", color: .red,
-                     requiresSecret: true, clientIDLabel: "App ID", clientSecretLabel: "App Secret")
+                     requiresSecret: true, clientIDLabel: "App ID", clientSecretLabel: "App Secret"),
+        PlatformInfo(id: "youtube", name: "YouTube", icon: "play.rectangle", color: .red,
+                     requiresSecret: true, clientIDLabel: "Client ID", clientSecretLabel: "Client Secret")
     ]
     
     var body: some View {
@@ -245,6 +250,15 @@ struct PlatformSettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(pinterestTesting)
+            )
+        } else if platform.id == "youtube" && connectionStatus["youtube"] == .connected {
+            return AnyView(
+                Button(youtubeTesting ? "Posting..." : "Test Post") {
+                    Task { await testYouTubePost() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(youtubeTesting)
             )
         }
         return nil
@@ -642,6 +656,70 @@ struct PlatformSettingsView: View {
             }
         } catch {
             errorMessage = "Pinterest pin failed: \(error.localizedDescription)"
+            showingError = true
+        }
+    }
+    
+    // MARK: - YouTube Test Post
+    
+    private func testYouTubePost() async {
+        youtubeTesting = true
+        defer { youtubeTesting = false }
+        
+        do {
+            let connector = YouTubeConnector()
+            guard await connector.isConfigured else {
+                errorMessage = "YouTube not configured. Try disconnecting and reconnecting."
+                showingError = true
+                return
+            }
+            
+            // 1. Fetch daily wisdom from RSS
+            let rssParser = RSSParser()
+            guard let entry = try await rssParser.fetchDaily() else {
+                errorMessage = "No daily wisdom entry available from RSS feed."
+                showingError = true
+                return
+            }
+            
+            // 2. Generate quote graphic
+            let generator = QuoteGraphicGenerator()
+            guard let image = generator.generate(from: entry) else {
+                errorMessage = "Failed to generate quote graphic."
+                showingError = true
+                return
+            }
+            
+            // 3. Generate video via Social Effects
+            let videoGenerator = VideoGenerator()
+            guard let videoURL = try await videoGenerator.generateVideo(entry: entry) else {
+                errorMessage = "Failed to generate video via Social Effects."
+                showingError = true
+                return
+            }
+            
+            // 4. Build caption
+            let caption = """
+            \(entry.title)
+
+            \(entry.content)
+
+            #Shorts #Wisdom #BookOfWisdom
+            """
+            
+            // 5. Post video to YouTube
+            let result = try await connector.postVideo(videoURL, caption: caption)
+            
+            if result.success {
+                successMessage = "YouTube Short uploaded! 🎬\n\(result.postURL?.absoluteString ?? "")"
+                showingSuccess = true
+            } else {
+                errorMessage = result.error?.localizedDescription ?? "YouTube upload failed"
+                showingError = true
+            }
+            
+        } catch {
+            errorMessage = "YouTube post failed: \(error.localizedDescription)"
             showingError = true
         }
     }

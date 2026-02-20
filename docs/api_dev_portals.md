@@ -180,7 +180,7 @@ Follow these detailed steps to enable Social Marketer to post Video Shorts to yo
 #### Step 1: Create a Google Cloud Project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Sign in with your Google account (<quasaur@gmail.com>)
+2. Sign in with your Google account (<devcalvinlm@gmail.com>)
 3. Click the project selector dropdown at the top
 4. Click **New Project**
 5. Enter **Project name**: `Social Marketer`

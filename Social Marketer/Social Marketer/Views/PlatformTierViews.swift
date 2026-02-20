@@ -17,7 +17,6 @@ enum PlatformTier {
     }
     
     static let apiAvailable: [Item] = [
-        Item(name: "YouTube", icon: "play.rectangle.fill", note: "Google Data API v3"),
         Item(name: "TikTok", icon: "music.note", note: "Content Posting API"),
         Item(name: "Threads", icon: "at", note: "Meta Threads API"),
         Item(name: "Bluesky", icon: "cloud.fill", note: "AT Protocol (open)"),
