@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Manages the Social Effects API server process lifecycle
 /// Handles starting, monitoring, and stopping the external Swift process
@@ -103,7 +104,8 @@ class SocialEffectsProcessManager {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             
             if process.isRunning {
-                process.kill()
+                // Force kill using POSIX signal
+                kill(process.processIdentifier, SIGKILL)
             }
         }
         

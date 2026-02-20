@@ -26,10 +26,10 @@ final class VideoGenerator {
         let rssItem = RSSItem(
             title: entry.title,
             content: entry.content,
-            contentType: entry.contentType ?? "thought",
-            nodeTitle: entry.nodeTitle ?? sanitizeTitle(entry.title),
+            contentType: entry.category.rawValue.lowercased(),
+            nodeTitle: sanitizeTitle(entry.title),
             source: entry.reference ?? "wisdombook.life",
-            pubDate: entry.pubDate ?? Date()
+            pubDate: entry.pubDate
         )
         
         do {
@@ -62,10 +62,10 @@ final class VideoGenerator {
         let rssItem = RSSItem(
             title: entry.title,
             content: entry.content,
-            contentType: entry.contentType ?? "thought",
-            nodeTitle: entry.nodeTitle ?? sanitizeTitle(entry.title),
+            contentType: entry.category.rawValue.lowercased(),
+            nodeTitle: sanitizeTitle(entry.title),
             source: entry.reference ?? "wisdombook.life",
-            pubDate: entry.pubDate ?? Date()
+            pubDate: entry.pubDate
         )
         
         // Start server manually

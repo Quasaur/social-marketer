@@ -173,38 +173,137 @@ Quick reference for obtaining API access for each V1 platform.
 
 **Portal**: <https://console.cloud.google.com>
 
-**Setup Process**:
+### Step-by-Step: Obtaining YouTube API Key for Video Shorts
 
-1. Sign in with your Google account (<quasaur@gmail.com>)
-2. Create a new **Google Cloud Project** → Project name: **Social Marketer**
-3. Enable **YouTube Data API v3**:
-   - Go to **APIs & Services** → **Library**
-   - Search for "YouTube Data API v3"
-   - Click **Enable**
-4. Configure **OAuth consent screen**:
-   - Go to **APIs & Services** → **OAuth consent screen**
-   - User type: **External** (for testing)
-   - App name: **Social Marketer**
-   - User support email: <quasaur@gmail.com>
-   - Developer contact: <quasaur@gmail.com>
-   - **Scopes**: Add `https://www.googleapis.com/auth/youtube.upload`
-   - **Test users**: Add <quasaur@gmail.com>
-5. Create **OAuth 2.0 Client ID**:
-   - Go to **APIs & Services** → **Credentials**
-   - Click **Create Credentials** → **OAuth client ID**
-   - Application type: **Desktop app** (or **Web application** with localhost redirect)
-   - Authorized redirect URIs: `http://localhost:8989/oauth/callback`
-   - Copy **Client ID** and **Client Secret**
+Follow these detailed steps to enable Social Marketer to post Video Shorts to your YouTube channel.
 
-**Required Scope**: `https://www.googleapis.com/auth/youtube.upload`
+#### Step 1: Create a Google Cloud Project
 
-**Content Format**: YouTube requires video files. The app automatically converts static images into short videos (3-second MP4 at 30fps) using AVFoundation before upload.
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Sign in with your Google account (<quasaur@gmail.com>)
+3. Click the project selector dropdown at the top
+4. Click **New Project**
+5. Enter **Project name**: `Social Marketer`
+6. Click **Create**
+7. Wait for the project to be created, then select it from the dropdown
 
-**Upload Endpoint**: `POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status`
+#### Step 2: Enable YouTube Data API v3
 
-**Redirect Flow**: Uses localhost HTTP server (port 8989), same as other OAuth 2.0 platforms.
+1. Go to **APIs & Services** → **Library** (left sidebar)
+2. In the search bar, type: `YouTube Data API v3`
+3. Click on **YouTube Data API v3** in the results
+4. Click the **Enable** button
+5. Wait for the API to be enabled (this may take a minute)
 
-**Approval Time**: Instant for testing mode with test users configured
+#### Step 3: Configure OAuth Consent Screen
+
+1. Go to **APIs & Services** → **OAuth consent screen** (left sidebar)
+2. Select **User type**: **External** (available to any test user)
+3. Click **Create**
+4. Fill in the **App information**:
+   - **App name**: `Social Marketer`
+   - **User support email**: <quasaur@gmail.com>
+   - **App logo** (optional): You can skip this
+5. Fill in **Developer contact information**:
+   - **Email addresses**: <quasaur@gmail.com>
+6. Click **Save and Continue**
+7. On **Scopes** screen, click **Add or Remove Scopes**
+8. Find and select: `https://www.googleapis.com/auth/youtube.upload`
+   - This scope allows uploading videos to YouTube
+9. Click **Update**, then **Save and Continue**
+10. On **Test users** screen, click **Add Users**
+11. Add your email: <quasaur@gmail.com>
+12. Click **Save and Continue**
+13. Review the summary, then click **Back to Dashboard**
+
+#### Step 4: Create OAuth 2.0 Client ID
+
+1. Go to **APIs & Services** → **Credentials** (left sidebar)
+2. Click **Create Credentials** (top button)
+3. Select **OAuth client ID**
+4. For **Application type**, select: **Desktop app**
+5. Enter **Name**: `Social Marketer macOS App`
+6. Click **Create**
+7. A popup will show your **Client ID** and **Client Secret**
+8. Click **Download JSON** to save the credentials file
+9. Click **OK**
+
+> ⚠️ **IMPORTANT**: You will only see the Client Secret once. If you lose it, you'll need to regenerate it.
+
+#### Step 5: Configure Social Marketer
+
+1. Open **Social Marketer** app
+2. Go to **Platforms** tab
+3. Find **YouTube** and click **Settings**
+4. Enter:
+   - **Client ID**: (from Step 4)
+   - **Client Secret**: (from Step 4)
+5. Click **Connect**
+6. A browser window will open for OAuth authorization
+7. Sign in with <quasaur@gmail.com>
+8. Click **Allow** to grant permissions
+9. The app will automatically receive the authorization code
+
+#### Step 6: Test YouTube Video Shorts Posting
+
+1. In Social Marketer, ensure YouTube is **enabled** (toggle is ON)
+2. Go to **Dashboard** → **Test Post** section
+3. Click the **Test Post** button next to YouTube
+4. The app will:
+   - Fetch daily wisdom from RSS feed
+   - Generate a quote graphic
+   - Generate a video short using Social Effects
+   - Upload the video to YouTube as a Short
+5. Check your YouTube Studio to verify the Short was posted
+
+### Video Shorts Specifications
+
+When posting to YouTube, Social Marketer creates Shorts with these specifications:
+
+| Property | Value |
+|:---------|:------|
+| **Aspect Ratio** | 9:16 (vertical) |
+| **Resolution** | 1080 x 1920 pixels |
+| **Duration** | 3 seconds (configurable) |
+| **Frame Rate** | 30 fps |
+| **Format** | MP4 (H.264) |
+| **Hashtags** | #Shorts automatically added |
+
+### Required Scope
+
+`https://www.googleapis.com/auth/youtube.upload`
+
+This scope allows the app to upload videos to your YouTube channel.
+
+### Content Flow
+
+```
+RSS Feed → Wisdom Entry → Quote Graphic → Social Effects API → Video Short → YouTube Upload
+```
+
+The Social Effects service (running on localhost:5390) generates the video short, then YouTubeConnector uploads it via the YouTube Data API v3.
+
+### API Endpoint
+
+`POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status`
+
+### Redirect Flow
+
+Uses localhost HTTP server (port 8989), same as other OAuth 2.0 platforms.
+
+### Approval Time
+
+- **Test Mode**: Instant (with test users configured)
+- **Production**: Requires app verification for public use (not needed for personal use)
+
+### Troubleshooting
+
+| Issue | Solution |
+|:------|:---------|
+| "Access denied" error | Ensure <quasaur@gmail.com> is added as a test user in OAuth consent screen |
+| "Invalid client" error | Verify Client ID and Client Secret are copied correctly |
+| Video not appearing as Short | The #Shorts hashtag helps, but YouTube algorithm ultimately classifies it |
+| Upload fails | Check that YouTube Data API v3 is enabled and not quota exceeded |
 
 ---
 
