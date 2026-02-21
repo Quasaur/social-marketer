@@ -146,8 +146,28 @@ class SocialEffectsProcessManager {
     /// Returns whether the server is currently running
     var serverIsRunning: Bool {
         get async {
+            // First check if the process is still alive
+            if let process = process {
+                if !process.isRunning {
+                    print("⚠️ Social Effects process terminated unexpectedly")
+                    isRunning = false
+                    self.process = nil
+                    return false
+                }
+            } else if isRunning {
+                // Process is nil but flag says running - inconsistent state
+                print("⚠️ Social Effects process nil but flag says running")
+                isRunning = false
+                return false
+            }
+            
+            // Process exists and is running, check health
             if !isRunning { return false }
-            return await checkHealth()
+            let healthy = await checkHealth()
+            if !healthy {
+                print("⚠️ Social Effects process running but not responding to health check")
+            }
+            return healthy
         }
     }
 }

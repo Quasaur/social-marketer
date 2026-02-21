@@ -179,6 +179,8 @@ struct DashboardView: View {
             
             // Recent Errors
             ErrorLogView()
+                .frame(minHeight: 300)
+                .padding(.horizontal)
         }
         .padding(.top)
         .padding(.bottom)

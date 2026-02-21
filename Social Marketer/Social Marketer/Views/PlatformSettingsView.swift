@@ -753,7 +753,21 @@ struct PlatformSettingsView: View {
                     category: .thought
                 )
                 
+                // Check Social Effects status before attempting generation
+                let manager = SocialEffectsProcessManager.shared
+                let serverRunning = await manager.serverIsRunning
+                ErrorLog.shared.log(
+                    category: "YouTube",
+                    message: "Social Effects status check",
+                    detail: "Server running: \(serverRunning)"
+                )
+                
                 do {
+                    ErrorLog.shared.log(
+                        category: "YouTube",
+                        message: "Starting video generation",
+                        detail: "Title: \(title)"
+                    )
                     guard let generatedURL = try await videoGen.generateVideo(entry: entry) else {
                         let msg = "Video generation failed - no URL returned"
                         ErrorLog.shared.log(category: "YouTube", message: "Video generation failed", detail: msg)
@@ -767,6 +781,24 @@ struct PlatformSettingsView: View {
                         message: "Video generated successfully",
                         detail: "Saved to: \(finalVideoURL.lastPathComponent)"
                     )
+                } catch let error as VideoGenerationError {
+                    let errorDetail: String
+                    switch error {
+                    case .serverUnavailable:
+                        errorDetail = "Social Effects server unavailable. Check that the server is running on port 5390."
+                    case .generationFailed(let message):
+                        errorDetail = "Generation failed: \(message)"
+                    case .unknown(let underlying):
+                        errorDetail = "Unknown error: \(underlying.localizedDescription)"
+                    }
+                    ErrorLog.shared.log(
+                        category: "YouTube",
+                        message: "Video generation error: \(error)",
+                        detail: errorDetail
+                    )
+                    errorMessage = errorDetail
+                    showingError = true
+                    return
                 } catch {
                     ErrorLog.shared.log(
                         category: "YouTube",
