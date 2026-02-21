@@ -78,14 +78,26 @@ class SocialEffectsService {
             "ping_pong": false
         ]
         
-        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        print("📋 Request body dict: \(body)")
+        
+        let jsonData: Data
+        do {
+            jsonData = try JSONSerialization.data(withJSONObject: body)
+            print("📊 JSON data size: \(jsonData.count) bytes")
+        } catch {
+            print("❌ JSON serialization failed: \(error)")
+            throw SocialEffectsError.generationFailed("JSON serialization failed: \(error.localizedDescription)")
+        }
         
         // Debug: Log the JSON being sent
         if let jsonString = String(data: jsonData, encoding: .utf8) {
             print("📤 Sending JSON to Social Effects: \(jsonString)")
+        } else {
+            print("❌ Could not convert JSON data to string")
         }
         
         request.httpBody = jsonData
+        request.setValue("\(jsonData.count)", forHTTPHeaderField: "Content-Length")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
