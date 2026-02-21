@@ -78,7 +78,14 @@ class SocialEffectsService {
             "ping_pong": false
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        
+        // Debug: Log the JSON being sent
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("📤 Sending JSON to Social Effects: \(jsonString)")
+        }
+        
+        request.httpBody = jsonData
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
