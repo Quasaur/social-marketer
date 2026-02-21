@@ -125,9 +125,18 @@ final class PlatformRouter {
                 caption = content ?? ""
             }
             
-            // Determine media type based on platform capabilities
-            let useVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
+            // Determine media type based on platform capabilities and preferences
+            let platformPrefersVideo = platform.prefersVideo
+            let canUseVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
             let disableVideoForPlatform = (platformName == "X (Twitter)" || platformName == "Facebook")
+            
+            // For Instagram/TikTok: respect user preference; for others: auto-determine
+            let useVideo: Bool
+            if platformName == "Instagram" || platformName == "TikTok" {
+                useVideo = canUseVideo && platformPrefersVideo
+            } else {
+                useVideo = canUseVideo && !disableVideoForPlatform
+            }
             
             do {
                 var result: PostResult
@@ -150,9 +159,14 @@ final class PlatformRouter {
                     }
                 } else {
                     // IMAGE POST
-                    if platformName == "YouTube" || platformName == "TikTok" {
-                        logger.warning("Skipping \(platformName) - static images not supported/desired")
+                    if platformName == "YouTube" {
+                        logger.warning("Skipping \(platformName) - static images not supported")
                         continue
+                    }
+                    
+                    // TikTok/Instagram with image preference set
+                    if (platformName == "TikTok" || platformName == "Instagram") && !platformPrefersVideo {
+                        logger.info("🖼️ Posting IMAGE to \(platformName) (user preference)")
                     }
                     
                     guard let img = image else {

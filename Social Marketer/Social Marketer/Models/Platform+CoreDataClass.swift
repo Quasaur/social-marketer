@@ -64,6 +64,7 @@ extension Platform {
     @NSManaged public var lastPostDate: Date?
     @NSManaged public var createdAt: Date?
     @NSManaged public var posts: NSSet?
+    @NSManaged public var preferredMediaType: String?  // "video" (default) or "image"
 }
 
 // MARK: - Relationships
@@ -86,3 +87,31 @@ extension Platform {
 // MARK: - Identifiable
 
 extension Platform: Identifiable {}
+
+// MARK: - Media Type Preferences
+
+extension Platform {
+    
+    /// Preferred media type for posting: "video" (default) or "image"
+    /// Only applies to platforms that support both (Instagram, TikTok)
+    var mediaTypePreference: String {
+        get { preferredMediaType ?? "video" }
+        set { preferredMediaType = newValue }
+    }
+    
+    /// Whether this platform prefers video content
+    var prefersVideo: Bool {
+        mediaTypePreference == "video"
+    }
+    
+    /// Whether this platform prefers image content
+    var prefersImage: Bool {
+        mediaTypePreference == "image"
+    }
+    
+    /// Check if platform supports media type preference
+    var supportsMediaTypePreference: Bool {
+        guard let name = self.name else { return false }
+        return name == "Instagram" || name == "TikTok"
+    }
+}

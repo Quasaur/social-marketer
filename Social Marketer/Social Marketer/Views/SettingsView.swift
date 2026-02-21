@@ -18,6 +18,10 @@ struct SettingsView: View {
     @State private var backupAlertTitle = ""
     @State private var backupAlertMessage = ""
     
+    // Platform media preferences (stored in UserDefaults for quick access)
+    @AppStorage("instagramPrefersVideo") private var instagramPrefersVideo = true
+    @AppStorage("tiktokPrefersVideo") private var tiktokPrefersVideo = true
+    
     private let backupManager = CredentialBackupManager.shared
     
     var body: some View {
@@ -78,6 +82,44 @@ struct SettingsView: View {
                         .toggleStyle(.status)
                 }
                 
+                Section("Platform Media Preferences") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "camera.fill")
+                                .foregroundStyle(.pink)
+                            Text("Instagram")
+                                .font(.body)
+                            Spacer()
+                            Picker("", selection: $instagramPrefersVideo) {
+                                Text("Video Shorts").tag(true)
+                                Text("Static Images").tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 160)
+                        }
+                        
+                        HStack {
+                            Image(systemName: "music.note")
+                                .foregroundStyle(.cyan)
+                            Text("TikTok")
+                                .font(.body)
+                            Spacer()
+                            Picker("", selection: $tiktokPrefersVideo) {
+                                Text("Video Shorts").tag(true)
+                                Text("Static Images").tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 160)
+                        }
+                        .disabled(true) // TikTok pipeline not yet implemented
+                        .opacity(0.6)
+                    }
+                    
+                    Text("Choose whether to post video shorts or static images to each platform. TikTok support coming soon.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
                 Section("Content Source") {
                     LabeledContent("RSS Feed") {
                         Text("wisdombook.life/feed/daily.xml")
@@ -132,10 +174,42 @@ struct SettingsView: View {
             .formStyle(.grouped)
         }
         .padding(.top)
+        .onAppear {
+            syncPreferencesFromCoreData()
+        }
+        .onChange(of: instagramPrefersVideo) { _, newValue in
+            updatePlatformPreference(name: "Instagram", prefersVideo: newValue)
+        }
+        .onChange(of: tiktokPrefersVideo) { _, newValue in
+            updatePlatformPreference(name: "TikTok", prefersVideo: newValue)
+        }
         .alert(backupAlertTitle, isPresented: $showingBackupAlert) {
             Button("OK") {}
         } message: {
             Text(backupAlertMessage)
+        }
+    }
+    
+    /// Load platform preferences from Core Data into UserDefaults
+    private func syncPreferencesFromCoreData() {
+        let context = PersistenceController.shared.viewContext
+        
+        if let instagram = Platform.find(name: "Instagram", in: context) {
+            instagramPrefersVideo = instagram.prefersVideo
+        }
+        if let tiktok = Platform.find(name: "TikTok", in: context) {
+            tiktokPrefersVideo = tiktok.prefersVideo
+        }
+    }
+    
+    /// Update Core Data when UserDefaults preference changes
+    private func updatePlatformPreference(name: String, prefersVideo: Bool) {
+        let context = PersistenceController.shared.viewContext
+        
+        if let platform = Platform.find(name: name, in: context) {
+            platform.mediaTypePreference = prefersVideo ? "video" : "image"
+            PersistenceController.shared.save()
+            Log.app.info("Updated \(name) preference to \(prefersVideo ? "video" : "image")")
         }
     }
     

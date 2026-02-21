@@ -105,13 +105,14 @@ struct SocialMarketerApp: App {
         let context = persistenceController.viewContext
         let request = Platform.fetchRequest()
         
-        // Canonical V1 platform list
+        // Canonical V1 platform list (includes TikTok for future use)
         let canonicalPlatforms: [(String, String)] = [
             ("X (Twitter)", "oauth2"),
             ("Instagram", "graph_api"),
             ("LinkedIn", "oauth2"),
             ("Facebook", "facebook"),
-            ("Pinterest", "pinterest")
+            ("Pinterest", "pinterest"),
+            ("TikTok", "tiktok")  // Pipeline coming soon
         ]
         let canonicalNames = Set(canonicalPlatforms.map { $0.0 })
         
@@ -122,7 +123,11 @@ struct SocialMarketerApp: App {
             if existing.isEmpty {
                 // Fresh seed
                 for (name, apiType) in canonicalPlatforms {
-                    _ = Platform(context: context, name: name, apiType: apiType)
+                    let platform = Platform(context: context, name: name, apiType: apiType)
+                    // Set default media type preference for video-capable platforms
+                    if name == "Instagram" || name == "TikTok" {
+                        platform.preferredMediaType = "video"
+                    }
                 }
                 try context.save()
                 Log.app.notice("Seeded \(canonicalPlatforms.count) default platforms")
@@ -131,12 +136,26 @@ struct SocialMarketerApp: App {
                 
                 // Add missing platforms
                 for (name, apiType) in canonicalPlatforms where !existingNames.contains(name) {
-                    _ = Platform(context: context, name: name, apiType: apiType)
+                    let platform = Platform(context: context, name: name, apiType: apiType)
+                    // Set default media type preference for video-capable platforms
+                    if name == "Instagram" || name == "TikTok" {
+                        platform.preferredMediaType = "video"
+                    }
                     Log.app.notice("Added missing platform: \(name)")
                     if Log.isDebugMode {
                         Log.debug("[seedPlatforms] Added: \(name)", category: "App")
                     }
                     changed = true
+                }
+                
+                // Set default media type for existing platforms that don't have it set
+                for platform in existing {
+                    let name = platform.name ?? ""
+                    if (name == "Instagram" || name == "TikTok") && platform.preferredMediaType == nil {
+                        platform.preferredMediaType = "video"
+                        Log.app.notice("Set default media preference for \(name): video")
+                        changed = true
+                    }
                 }
                 
                 // Remove obsolete platforms (not in canonical list and no credentials)
@@ -257,6 +276,8 @@ struct SocialMarketerApp: App {
             return ks.exists(for: "api_creds_instagram") || ks.exists(for: "oauth_instagram")
         case "Pinterest":
             return ks.exists(for: "api_creds_pinterest") || ks.exists(for: "oauth_pinterest")
+        case "TikTok":
+            return ks.exists(for: "api_creds_tiktok") || ks.exists(for: "oauth_tiktok")
         default:
             // Fallback: try the display name directly
             return ks.exists(for: platformName)
