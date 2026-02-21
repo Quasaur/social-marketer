@@ -78,22 +78,25 @@ class SocialEffectsService {
             "ping_pong": false
         ]
         
-        print("📋 Request body dict: \(body)")
+        // Debug logging (when Debug Mode enabled)
+        if Log.isDebugMode {
+            Log.debug("Request body dict: \(body)", category: "SocialEffects")
+        }
         
         let jsonData: Data
         do {
             jsonData = try JSONSerialization.data(withJSONObject: body)
-            print("📊 JSON data size: \(jsonData.count) bytes")
+            if Log.isDebugMode {
+                Log.debug("JSON data size: \(jsonData.count) bytes", category: "SocialEffects")
+            }
         } catch {
-            print("❌ JSON serialization failed: \(error)")
+            Log.debug("JSON serialization failed: \(error)", category: "SocialEffects")
             throw SocialEffectsError.generationFailed("JSON serialization failed: \(error.localizedDescription)")
         }
         
-        // Debug: Log the JSON being sent
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📤 Sending JSON to Social Effects: \(jsonString)")
-        } else {
-            print("❌ Could not convert JSON data to string")
+        // Debug: Log the JSON being sent (when Debug Mode enabled)
+        if Log.isDebugMode, let jsonString = String(data: jsonData, encoding: .utf8) {
+            Log.debug("Sending JSON: \(jsonString)", category: "SocialEffects")
         }
         
         request.httpBody = jsonData
@@ -131,6 +134,10 @@ class SocialEffectsService {
     /// - Parameter rssItem: The RSS item to convert
     /// - Returns: Path to generated video
     func executeFullWorkflow(from rssItem: RSSItem) async throws -> String {
+        if Log.isDebugMode {
+            Log.debug("executeFullWorkflow called - title: \(rssItem.title), contentType: \(rssItem.contentType)", category: "SocialEffects")
+        }
+        
         defer {
             // Ensure server is always shut down, even on error
             Task {
