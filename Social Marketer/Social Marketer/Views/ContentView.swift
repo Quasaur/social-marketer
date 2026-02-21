@@ -19,7 +19,7 @@ struct ContentView: View {
                         .tag("dashboard")
                     Label("Content", systemImage: "doc.text")
                         .tag("content")
-                    Label("Queue", systemImage: "tray.and.arrow.up")
+                    Label("Post Queue", systemImage: "tray.and.arrow.up")
                         .tag("queue")
                 }
                 

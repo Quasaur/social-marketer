@@ -189,6 +189,18 @@ Social Effects will intelligently choose rendering engine:
     └── (temporary rendering files)
 ```
 
+### ⚠️ CRITICAL: Video File Organization (External Drive)
+
+When using external storage (`/Volumes/My Passport/social-media-content/social-effects/video/`):
+
+```
+video/
+├── api/    # ⚠️ PRODUCTION VIDEOS - Social Marketer posts these
+└── test/   # ⚠️ TEST VIDEOS - ignored by Social Marketer
+```
+
+**Rule:** Test videos must NEVER be saved to `video/api/` - Social Marketer scans this folder and will post any video found there.
+
 ## Error Handling
 
 If Social Effects fails to generate video:

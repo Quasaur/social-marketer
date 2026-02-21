@@ -20,6 +20,17 @@ Social Marketer is a Swift/SwiftUI desktop application that automates content sy
 - **Background Processing**: Videos generate asynchronously while you continue working
 - **YouTube Shorts Ready**: Direct upload to YouTube as Shorts with proper metadata
 
+### ⚠️ CRITICAL: Video File Organization
+
+**Social Marketer ONLY reads from `video/api/` - test videos go to `video/test/`**
+
+| Folder | Content | Action |
+|--------|---------|--------|
+| `/social-effects/video/api/` | Production videos | ✅ Scanned and posted |
+| `/social-effects/video/test/` | Test/debug videos | ❌ Ignored |
+
+**Important:** If Social Effects accidentally saves test videos (named like `thought-Test_*.mp4`) to `video/api/`, Social Marketer will post them. Always verify test videos are in `video/test/`.
+
 ### Platform Configuration
 - **OAuth Integration**: Secure credential storage in macOS Keychain
 - **Per-Platform Settings**: Enable/disable platforms individually

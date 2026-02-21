@@ -91,6 +91,22 @@ ErrorLog.shared.log(
 | `/Volumes/My Passport/social-media-content/social-effects/video/api/` | Generated videos storage |
 | `~/Library/Group Containers/group.com.wisdombook.SocialMarketer/` | Core Data, Keychain |
 
+### ⚠️ CRITICAL: Video File Organization Rule
+
+**Social Marketer ONLY reads videos from `video/api/` - NEVER from `video/test/`**
+
+| Folder | Content Type | Should Post? |
+|--------|--------------|--------------|
+| `video/api/` | Production videos from RSS | ✅ Yes |
+| `video/test/` | Test/debug videos | ❌ NEVER |
+
+**Why this matters:** Test videos often have placeholder content like "Test Title" or incomplete quotes. Posting these to social media would be embarrassing and unprofessional.
+
+**Implementation notes:**
+- `VideoGenerator.findExistingVideo()` only scans `video/api/` folder
+- Test videos with names like `thought-Test_*.mp4` or `thought-Debug_*.mp4` should be ignored
+- If a test video is accidentally found in `video/api/`, it should be moved to `video/test/` immediately
+
 ## Configuration Files
 
 - **No build-time config** - All settings are runtime configurable

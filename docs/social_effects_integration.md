@@ -107,6 +107,31 @@ All generated videos are saved to:
 /Volumes/My Passport/social-media-content/social-effects/video/api/
 ```
 
+### ⚠️ CRITICAL: Test vs Production Videos
+
+**Social Marketer assumes ALL videos in `video/api/` are production-ready content.**
+
+| Folder | Purpose | Social Marketer Action |
+|--------|---------|----------------------|
+| `video/api/` | Production videos | Scans and posts to social media |
+| `video/test/` | Test/debug videos | Ignored completely |
+
+**Test videos must NEVER be saved to `video/api/` because:**
+1. They may contain placeholder text like "Test Title"
+2. They may have incomplete or nonsense content
+3. Social Marketer will automatically post them
+
+**If you discover test videos in `video/api/`:**
+```bash
+# Move them to test folder immediately
+mv "/Volumes/My Passport/social-media-content/social-effects/video/api/thought-Test_*.mp4" \
+   "/Volumes/My Passport/social-media-content/social-effects/video/test/"
+```
+
+**Video file naming conventions:**
+- Production: `thought-{Title}-{timestamp}.mp4`, `passage-{Title}-{timestamp}.mp4`
+- Test: `test_*.mp4`, `thought-Test_*.mp4`, `thought-Debug_*.mp4`
+
 ## Timing Reference
 
 Generated videos follow this cinematic timeline:

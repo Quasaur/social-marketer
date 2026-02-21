@@ -112,6 +112,14 @@ final class PostScheduler {
     
     // MARK: - Scheduled Post Execution
     
+    /// Check if a platform has already been posted to today
+    private func hasPostedToday(platform: Platform) -> Bool {
+        guard let lastPostDate = platform.lastPostDate else { return false }
+        
+        let calendar = Calendar.current
+        return calendar.isDate(lastPostDate, inSameDayAs: Date())
+    }
+    
     /// Execute scheduled posting (called by launchd or manually)
     func executeScheduledPost() async {
         logger.info("Executing scheduled post...")
@@ -125,6 +133,24 @@ final class PostScheduler {
             for p in allPlatforms {
                 Log.debug("  - \(p.name ?? "?") enabled=\(p.isEnabled) apiType=\(p.apiType ?? "?")", category: "Scheduler")
             }
+        }
+        
+        // Filter out platforms that have already been posted to today
+        let platformsToPost = enabledPlatforms.filter { platform in
+            let alreadyPosted = hasPostedToday(platform: platform)
+            if alreadyPosted, let name = platform.name {
+                logger.info("⏭️ Skipping \(name) — already posted today")
+            }
+            return !alreadyPosted
+        }
+        
+        guard !platformsToPost.isEmpty else {
+            logger.info("All enabled platforms have already been posted to today — skipping")
+            return
+        }
+        
+        if platformsToPost.count < enabledPlatforms.count {
+            logger.info("Posting to \(platformsToPost.count) of \(enabledPlatforms.count) enabled platforms (others already posted today)")
         }
         
         // Check if introductory post is due (every 90 days)
@@ -157,8 +183,8 @@ final class PostScheduler {
             // 3a. Get or create video (checks for existing first)
             let videoURL = try await getOrCreateVideo(for: entry)
             
-            // 4. Post to all enabled platforms
-            await router.postToAll(entry: entry, image: image, imageURL: tempURL, videoURL: videoURL, link: entry.link)
+            // 4. Post to enabled platforms (excluding those already posted today)
+            await router.postToAll(entry: entry, image: image, imageURL: tempURL, videoURL: videoURL, link: entry.link, platforms: platformsToPost)
             
             // 5. Ping Google Search Console
             await pingGoogle(url: entry.link)

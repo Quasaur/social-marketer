@@ -180,7 +180,7 @@ struct QueueView: View {
         
         await scheduler.executeScheduledPost()
         
-        postResult = "Wisdom posted to all connected platforms! 🎉\nCheck the Posted section below for results."
+        postResult = "Wisdom posted to available platforms! 🎉\nPlatforms already posted to today were skipped.\nCheck the Posted section below for results."
         showingResult = true
     }
     

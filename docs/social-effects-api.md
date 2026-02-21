@@ -163,6 +163,16 @@ func generateVideo(title: String, content: String, contentType: String, nodeTitl
 
 3. **Output Location**: Videos are saved to `/Volumes/My Passport/social-media-content/social-effects/video/`
 
+   ### ⚠️ CRITICAL: Video Folder Structure
+   
+   ```
+   video/
+   ├── api/    # ⚠️ PRODUCTION VIDEOS ONLY - Social Marketer posts these
+   └── test/   # ⚠️ TEST VIDEOS - Social Marketer ignores these
+   ```
+   
+   **Rule:** Test videos (names containing `Test`, `Debug`, etc.) must NEVER be saved to `video/api/`. Social Marketer scans this folder and will post any video it finds.
+
 4. **Error Handling**: API returns HTTP 200 for successful requests (even if video generation fails internally). Check `success` field in response.
 
 5. **Server Start**: Ensure social-effects API server is running:
