@@ -662,73 +662,205 @@ struct PlatformSettingsView: View {
     
     // MARK: - YouTube Test Post
     
-    /// Path to the most recently generated video from Social Effects
-    /// Update this path when testing with a new video
-    private let testVideoPath = "/Volumes/My Passport/social-media-content/social-effects/video/api/thought-Direct_Binary-1771607724.mp4"
-    
+    /// Posts the first pending item from the Queue to YouTube.
+    /// If queue is empty, fetches from RSS and generates video on-the-fly.
+    /// This is a ONE-CLICK test - no configuration needed.
+    /// Results are logged to ErrorLog for viewing in Dashboard > Recent Errors.
     private func testYouTubePost() async {
         youtubeTesting = true
         defer { youtubeTesting = false }
         
+        // Log start of test
+        ErrorLog.shared.log(
+            category: "YouTube",
+            message: "Test Post started",
+            detail: "Checking for queued content or RSS feed..."
+        )
+        
         do {
             let connector = YouTubeConnector()
             guard await connector.isConfigured else {
-                errorMessage = "YouTube not configured. Try disconnecting and reconnecting."
+                let msg = "YouTube not configured. Try disconnecting and reconnecting."
+                ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
+                errorMessage = msg
                 showingError = true
                 return
             }
             
-            // 1. Fetch daily wisdom from RSS for caption
-            let rssParser = RSSParser()
-            guard let entry = try await rssParser.fetchDaily() else {
-                errorMessage = "No daily wisdom entry available from RSS feed."
-                showingError = true
-                return
+            // 1. Get content from Queue (first pending post) or RSS
+            let (title, content, videoURL): (String, String, URL?)
+            
+            if let queuedPost = await getFirstPendingPost() {
+                // Use queued post content
+                title = queuedPost.content?.prefix(60).replacingOccurrences(of: "\n", with: " ") ?? "Wisdom"
+                content = queuedPost.content ?? ""
+                ErrorLog.shared.log(
+                    category: "YouTube",
+                    message: "Using queued post: \(title)",
+                    detail: "Found pending post in Queue"
+                )
+                
+                // Try to find an existing video file matching this content
+                videoURL = await findExistingVideo(for: title)
+                
+            } else {
+                // Fall back to RSS
+                let rssParser = RSSParser()
+                guard let entry = try await rssParser.fetchDaily() else {
+                    let msg = "No posts in queue and RSS feed unavailable."
+                    ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
+                    errorMessage = msg
+                    showingError = true
+                    return
+                }
+                title = entry.title
+                content = entry.content
+                ErrorLog.shared.log(
+                    category: "YouTube",
+                    message: "Using RSS feed: \(title)",
+                    detail: "No queued posts found, fetched from RSS"
+                )
+                videoURL = nil // Will generate video
             }
             
-            // 2. Generate quote graphic for thumbnail
-            let generator = QuoteGraphicGenerator()
-            guard let image = generator.generate(from: entry) else {
-                errorMessage = "Failed to generate quote graphic."
-                showingError = true
-                return
+            // 2. Get or generate video
+            let finalVideoURL: URL
+            if let existingURL = videoURL {
+                finalVideoURL = existingURL
+                ErrorLog.shared.log(
+                    category: "YouTube",
+                    message: "Using existing video",
+                    detail: "Found: \(finalVideoURL.lastPathComponent)"
+                )
+            } else {
+                // Generate video on-the-fly
+                ErrorLog.shared.log(
+                    category: "YouTube",
+                    message: "Generating new video",
+                    detail: "No existing video found for: \(title)"
+                )
+                successMessage = "Generating video... This may take a moment."
+                showingSuccess = true
+                
+                let videoGen = VideoGenerator()
+                let entry = WisdomEntry(
+                    id: UUID(),
+                    title: title,
+                    content: content,
+                    reference: nil,
+                    link: URL(string: "https://wisdombook.life")!,
+                    pubDate: Date(),
+                    category: .thought
+                )
+                
+                do {
+                    guard let generatedURL = try await videoGen.generateVideo(entry: entry) else {
+                        let msg = "Video generation failed - no URL returned"
+                        ErrorLog.shared.log(category: "YouTube", message: "Video generation failed", detail: msg)
+                        errorMessage = msg
+                        showingError = true
+                        return
+                    }
+                    finalVideoURL = generatedURL
+                    ErrorLog.shared.log(
+                        category: "YouTube",
+                        message: "Video generated successfully",
+                        detail: "Saved to: \(finalVideoURL.lastPathComponent)"
+                    )
+                } catch {
+                    ErrorLog.shared.log(
+                        category: "YouTube",
+                        message: "Video generation failed",
+                        detail: error.localizedDescription
+                    )
+                    throw error
+                }
             }
             
-            // 3. Use the EXISTING video from Social Effects (no new generation)
-            let videoURL = URL(fileURLWithPath: testVideoPath)
-            
-            // Verify video exists
-            guard FileManager.default.fileExists(atPath: testVideoPath) else {
-                errorMessage = "Test video not found at: \(testVideoPath)"
-                showingError = true
-                return
-            }
-            
-            print("🎬 Using existing video: \(testVideoPath)")
-            
-            // 4. Build caption
+            // 3. Build caption
             let caption = """
-            \(entry.title)
+            \(title)
 
-            \(entry.content)
+            \(content)
 
             #Shorts #Wisdom #BookOfWisdom
             """
             
-            // 5. Post video to YouTube
-            let result = try await connector.postVideo(videoURL, caption: caption)
+            ErrorLog.shared.log(
+                category: "YouTube",
+                message: "Uploading to YouTube",
+                detail: "Title: \(title.prefix(50))"
+            )
+            
+            // 4. Post video to YouTube ONLY
+            let result = try await connector.postVideo(finalVideoURL, caption: caption)
             
             if result.success {
-                successMessage = "YouTube Short uploaded! 🎬\n\(result.postURL?.absoluteString ?? "")"
+                // Mark the queued post as posted if it came from queue
+                if let queuedPost = await getFirstPendingPost() {
+                    await markPostAsPosted(queuedPost, result: result)
+                }
+                
+                let msg = "Posted to YouTube! 🎬"
+                let detail = "URL: \(result.postURL?.absoluteString ?? "No URL")\nPost ID: \(result.postID ?? "No ID")"
+                ErrorLog.shared.log(category: "YouTube", message: msg, detail: detail)
+                
+                successMessage = "✅ \(msg)\n\(result.postURL?.absoluteString ?? "")"
                 showingSuccess = true
             } else {
-                errorMessage = result.error?.localizedDescription ?? "YouTube upload failed"
+                let detail = result.error?.localizedDescription ?? "Unknown error"
+                ErrorLog.shared.log(category: "YouTube", message: "YouTube upload failed", detail: detail)
+                errorMessage = detail
                 showingError = true
             }
             
         } catch {
-            errorMessage = "YouTube post failed: \(error.localizedDescription)"
+            let detail = "YouTube post failed: \(error.localizedDescription)"
+            ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: detail)
+            errorMessage = detail
             showingError = true
+        }
+    }
+    
+    /// Get the first pending post from the queue
+    private func getFirstPendingPost() async -> Post? {
+        let context = PersistenceController.shared.viewContext
+        return await context.perform {
+            return Post.fetchPending(in: context).first
+        }
+    }
+    
+    /// Look for an existing video file that matches the content title
+    /// Delegates to PostScheduler to keep logic centralized
+    private func findExistingVideo(for title: String) async -> URL? {
+        // Use PostScheduler's centralized video discovery
+        let scheduler = PostScheduler()
+        return scheduler.findExistingVideo(for: title)
+    }
+    
+    /// Mark a post as successfully posted
+    private func markPostAsPosted(_ post: Post, result: PostResult) async {
+        let context = PersistenceController.shared.viewContext
+        await context.perform {
+            post.postStatus = .posted
+            post.postedDate = Date()
+            
+            // Fetch YouTube platform object
+            let youtubePlatform = Platform.fetchEnabled(in: context).first { $0.name == "YouTube" }
+            
+            // Create log entry
+            if let platform = youtubePlatform {
+                let log = PostLog(
+                    context: context,
+                    post: post,
+                    platform: platform,
+                    postID: result.postID,
+                    postURL: result.postURL
+                )
+                log.timestamp = Date()
+            }
+            
+            PersistenceController.shared.save()
         }
     }
 }

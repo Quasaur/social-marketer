@@ -202,7 +202,7 @@ Follow these detailed steps to enable Social Marketer to post Video Shorts to yo
 3. Click **Create**
 4. Fill in the **App information**:
    - **App name**: `Social Marketer`
-   - **User support email**: <quasaur@gmail.com>
+   - **User support email**: <devcalvinlm@gmail.com>
    - **App logo** (optional): You can skip this
 5. Fill in **Developer contact information**:
    - **Email addresses**: <quasaur@gmail.com>

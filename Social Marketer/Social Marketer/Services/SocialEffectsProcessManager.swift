@@ -21,29 +21,58 @@ class SocialEffectsProcessManager {
             return await checkHealth()
         }
         
+        // Check if binary exists, fall back to swift run if not
+        let binaryPath = "\(socialEffectsPath)/.build/debug/SocialEffects"
+        let useBinary = FileManager.default.fileExists(atPath: binaryPath)
+        
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        process.arguments = ["run", "SocialEffects", "api-server", String(serverPort)]
-        process.currentDirectoryURL = URL(fileURLWithPath: socialEffectsPath)
+        if useBinary {
+            // Use pre-built binary (faster)
+            process.executableURL = URL(fileURLWithPath: binaryPath)
+            process.arguments = ["api-server", String(serverPort)]
+            print("🚀 Starting Social Effects from pre-built binary...")
+        } else {
+            // Fall back to swift run (slower, builds first)
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+            process.arguments = ["run", "SocialEffects", "api-server", String(serverPort)]
+            process.currentDirectoryURL = URL(fileURLWithPath: socialEffectsPath)
+            print("🚀 Starting Social Effects via swift run (building if needed)...")
+        }
         
-        // Redirect output to avoid blocking
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        // Capture output for debugging
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
         
+        // Start process
         try process.run()
         self.process = process
         
-        // Wait a moment for server to start
-        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        // Wait for server to start with progressive retry
+        var healthy = false
+        for attempt in 1...10 {
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            healthy = await checkHealth()
+            if healthy { break }
+            print("  ⏳ Waiting for server... (attempt \(attempt)/10)")
+        }
         
-        // Verify server is responding
-        let healthy = await checkHealth()
         isRunning = healthy
         
         if healthy {
             print("✅ Social Effects API server started on port \(serverPort)")
         } else {
+            // Read error output for debugging
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            let stdoutData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let stdoutOutput = String(data: stdoutData, encoding: .utf8) ?? ""
+            
             print("❌ Failed to start Social Effects server")
+            print("   stderr: \(errorOutput)")
+            print("   stdout: \(stdoutOutput)")
+            
             process.terminate()
             self.process = nil
         }

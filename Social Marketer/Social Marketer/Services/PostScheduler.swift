@@ -45,6 +45,71 @@ final class PostScheduler {
     func installLaunchAgent() throws { try launchd.installLaunchAgent() }
     func uninstallLaunchAgent() throws { try launchd.uninstallLaunchAgent() }
     
+    // MARK: - Video Discovery
+    
+    /// Directory where Social Effects saves generated videos
+    private let videoStorageDir = "/Volumes/My Passport/social-media-content/social-effects/video/api/"
+    
+    /// Looks for an existing video file matching the given title
+    /// - Parameter title: The wisdom entry title to match
+    /// - Returns: URL to existing video if found, nil otherwise
+    func findExistingVideo(for title: String) -> URL? {
+        let fm = FileManager.default
+        
+        // Ensure directory exists
+        guard fm.fileExists(atPath: videoStorageDir) else {
+            logger.debug("Video directory not found: \(self.videoStorageDir)")
+            return nil
+        }
+        
+        // Get list of video files
+        guard let files = try? fm.contentsOfDirectory(atPath: videoStorageDir) else {
+            return nil
+        }
+        
+        // Sanitize title for matching (similar to VideoGenerator.sanitizeTitle)
+        let sanitizedTitle = title
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "\"", with: "")
+            .lowercased()
+        
+        // Look for matching video file
+        for file in files where file.hasSuffix(".mp4") {
+            let lowerFile = file.lowercased()
+            
+            // Match pattern: thought-{TITLE}-{TIMESTAMP}.mp4 or passage-{TITLE}-{TIMESTAMP}.mp4
+            if lowerFile.contains(sanitizedTitle) ||
+               sanitizedTitle.contains(lowerFile.replacingOccurrences(of: "thought-", with: "")
+                   .replacingOccurrences(of: "passage-", with: "")
+                   .replacingOccurrences(of: "_", with: " ")
+                   .replacingOccurrences(of: "-", with: " ")
+                   .prefix(40)) {
+                let videoURL = URL(fileURLWithPath: videoStorageDir + file)
+                logger.info("✅ Found existing video: \(file)")
+                return videoURL
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Gets or creates a video for the given wisdom entry
+    /// Checks for existing video first, generates new one only if needed
+    /// - Parameter entry: The wisdom entry to get video for
+    /// - Returns: URL to video file (existing or newly generated)
+    func getOrCreateVideo(for entry: WisdomEntry) async throws -> URL? {
+        // First, check if an existing video matches this content
+        if let existingURL = findExistingVideo(for: entry.title) {
+            logger.info("🎬 Using existing video for: \(entry.title)")
+            return existingURL
+        }
+        
+        // No existing video found - generate new one
+        logger.info("🎬 No existing video found, generating new video for: \(entry.title)")
+        return try await videoGen.generateVideo(entry: entry)
+    }
+    
     // MARK: - Scheduled Post Execution
     
     /// Execute scheduled posting (called by launchd or manually)
@@ -87,8 +152,8 @@ final class PostScheduler {
             
             logger.info("Quote graphic saved to \(tempURL.path)")
             
-            // 3a. Generate video (RSS Integration)
-            let videoURL = try await videoGen.generateVideo(entry: entry)
+            // 3a. Get or create video (checks for existing first)
+            let videoURL = try await getOrCreateVideo(for: entry)
             
             // 4. Post to all enabled platforms
             await router.postToAll(entry: entry, image: image, imageURL: tempURL, videoURL: videoURL, link: entry.link)
@@ -96,11 +161,9 @@ final class PostScheduler {
             // 5. Ping Google Search Console
             await pingGoogle(url: entry.link)
             
-            // 6. Cleanup
+            // 6. Cleanup - only remove temp image, preserve video files
             try? FileManager.default.removeItem(at: tempURL)
-            if let videoURL = videoURL {
-                try? FileManager.default.removeItem(at: videoURL)
-            }
+            // Note: We don't delete videoURL because it might be a reused existing video
             
             logger.info("Scheduled posting complete")
             
@@ -263,6 +326,7 @@ final class PostScheduler {
     }
     
     /// Post a single queued post to all enabled platforms — delegates to PlatformRouter
+    /// Checks for existing video before generating new one
     private func postFromQueue(_ post: Post, to platforms: [Platform]) async {
         guard let content = post.content else {
             logger.warning("Skipping post with no content")
@@ -278,6 +342,28 @@ final class PostScheduler {
         }
         
         let link = post.link ?? URL(string: "https://wisdombook.life")!
+        
+        // Check if we need a video for this post (for YouTube or other video platforms)
+        // First line of content is used as title for video matching
+        let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
+        // Get or create video for this post
+        let entry = WisdomEntry(
+            id: UUID(),
+            title: String(title),
+            content: content,
+            reference: nil,
+            link: link,
+            pubDate: Date(),
+            category: .thought
+        )
+        let videoURL = try? await getOrCreateVideo(for: entry)
+        
+        // Log video status
+        if let url = videoURL {
+            logger.info("🎬 Video ready for posting: \(url.lastPathComponent)")
+        } else {
+            logger.warning("⚠️ No video available for post")
+        }
         
         let result = await router.postToAll(
             content: content,

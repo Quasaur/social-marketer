@@ -53,6 +53,52 @@ struct SocialMarketerApp: App {
             let scheduler = PostScheduler()
             scheduler.ensureLaunchAgentCurrent()
         }
+        
+        // Start Social Effects video generation service (non-blocking)
+        // This ensures video generation is ready when needed
+        startSocialEffectsService()
+    }
+    
+    /// Start Social Effects service in background
+    /// Video generation requires this local service to be running
+    private func startSocialEffectsService() {
+        Task {
+            Log.app.notice("🚀 Starting Social Effects service...")
+            let manager = SocialEffectsProcessManager.shared
+            
+            // Check if already running
+            if await manager.serverIsRunning {
+                Log.app.notice("✅ Social Effects already running")
+                return
+            }
+            
+            // Start the service
+            do {
+                let started = try await manager.startServer()
+                if started {
+                    Log.app.notice("✅ Social Effects service started successfully")
+                    ErrorLog.shared.log(
+                        category: "App",
+                        message: "Social Effects service started",
+                        detail: "Video generation ready on port 5390"
+                    )
+                } else {
+                    Log.app.error("❌ Failed to start Social Effects service")
+                    ErrorLog.shared.log(
+                        category: "App",
+                        message: "Social Effects failed to start",
+                        detail: "Video generation will not be available. Check that the binary exists at /Users/quasaur/Developer/social-effects/.build/debug/SocialEffects"
+                    )
+                }
+            } catch {
+                Log.app.error("❌ Error starting Social Effects: \(error.localizedDescription)")
+                ErrorLog.shared.log(
+                    category: "App",
+                    message: "Social Effects startup error",
+                    detail: error.localizedDescription
+                )
+            }
+        }
     }
     
     private func seedPlatformsIfNeeded() {

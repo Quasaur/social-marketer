@@ -4,10 +4,45 @@
 //
 //  Created by Automation on 2026-02-16.
 //
+//  IMPORTANT: YouTube Upload Requirements for Full Automation
+//  ------------------------------------------------------------
+//  YouTube requires certain metadata fields to be explicitly set during upload
+//  to avoid manual intervention in YouTube Studio:
+//
+//  1. selfDeclaredMadeForKids: MUST be explicitly set (true/false)
+//     - false = Not made for kids (adult/general audience)
+//     - true = Made for kids (COPPA-compliant, limited features)
+//
+//  2. categoryId: Video category (e.g., 27=Education, 22=People & Blogs)
+//
+//  3. containsSyntheticMedia: Must declare if using AI-generated content
+//
+//  If these are missing, YouTube may put videos in "draft" or "needs review" state
+//  requiring manual answers in YouTube Studio.
+//
 
 import Foundation
 import AppKit
 import AVFoundation
+
+// MARK: - YouTube Video Categories (common values)
+// Full list: https://developers.google.com/youtube/v3/docs/videoCategories/list
+enum YouTubeCategory: String {
+    case filmAnimation = "1"
+    case autosVehicles = "2"
+    case music = "10"
+    case petsAnimals = "15"
+    case sports = "17"
+    case gaming = "20"
+    case peopleBlogs = "22"
+    case comedy = "23"
+    case entertainment = "24"
+    case newsPolitics = "25"
+    case howtoStyle = "26"
+    case education = "27"        // Default for wisdom/thought content
+    case scienceTech = "28"
+    case nonprofitActivism = "29"
+}
 
 // MARK: - YouTube Connector
 
@@ -69,7 +104,8 @@ final class YouTubeConnector: VideoPlatformConnector {
             videoURL: videoURL,
             title: extractTitle(from: caption),
             description: "\(caption)\n\n\(link.absoluteString)\n\n#Shorts",
-            accessToken: accessToken
+            accessToken: accessToken,
+            isShort: true
         )
         
         logger.info("YouTube Short uploaded: \(videoID)")
@@ -214,17 +250,32 @@ final class YouTubeConnector: VideoPlatformConnector {
     
     // MARK: - Upload
     
-    private func uploadVideo(videoURL: URL, title: String, description: String, accessToken: String) async throws -> String {
+    private func uploadVideo(videoURL: URL, title: String, description: String, accessToken: String, isShort: Bool = false) async throws -> String {
         let videoData = try Data(contentsOf: videoURL)
         
-        // Create metadata JSON
+        // Create metadata JSON with all required fields for full automation
+        // Note: These settings work for most content but adjust as needed:
+        // - selfDeclaredMadeForKids: false = NOT made for kids (adult audience)
+        // - containsSyntheticMedia: true if using AI voices (adjust based on your content)
+        // - categoryId: 27 = Education (change to 22 for People & Blogs, 24 for Entertainment, etc.)
         let metadata: [String: Any] = [
             "snippet": [
                 "title": title,
-                "description": description
+                "description": description,
+                "categoryId": "27",  // Education - see https://developers.google.com/youtube/v3/docs/videoCategories/list
+                "tags": ["thoughts", "wisdom", "shorts", "socialmarketer"]
             ],
             "status": [
-                "privacyStatus": "public"
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": false,  // CRITICAL: Explicitly declare NOT made for kids
+                "embeddable": true,
+                "publicStatsViewable": true,
+                "license": "youtube"  // Standard YouTube license
+            ],
+            "contentDetails": [
+                // Optionally declare if content contains synthetic/AI-generated media
+                // Set to true if using AI voices or generated visuals
+                "containsSyntheticMedia": false
             ]
         ]
         
@@ -249,7 +300,8 @@ final class YouTubeConnector: VideoPlatformConnector {
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         
         // Make request
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status")!)
+        // Note: We include "contentDetails" in the part parameter so containsSyntheticMedia is saved
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status,contentDetails")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/related; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
