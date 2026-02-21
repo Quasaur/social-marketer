@@ -116,13 +116,15 @@ final class PostScheduler {
     func executeScheduledPost() async {
         logger.info("Executing scheduled post...")
         
-        // Diagnostic: log platform state
+        // Diagnostic: log platform state (when Debug Mode enabled)
         let context = PersistenceController.shared.viewContext
         let allPlatforms = (try? context.fetch(Platform.fetchRequest())) ?? []
         let enabledPlatforms = allPlatforms.filter { $0.isEnabled }
-        print("[PostScheduler] Platforms: \(allPlatforms.count) total, \(enabledPlatforms.count) enabled")
-        for p in allPlatforms {
-            print("[PostScheduler]   - \(p.name ?? "?") enabled=\(p.isEnabled) apiType=\(p.apiType ?? "?")")
+        if Log.isDebugMode {
+            Log.debug("Platforms: \(allPlatforms.count) total, \(enabledPlatforms.count) enabled", category: "Scheduler")
+            for p in allPlatforms {
+                Log.debug("  - \(p.name ?? "?") enabled=\(p.isEnabled) apiType=\(p.apiType ?? "?")", category: "Scheduler")
+            }
         }
         
         // Check if introductory post is due (every 90 days)

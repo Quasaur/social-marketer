@@ -107,11 +107,15 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
     }
     
     func parse() throws -> [WisdomEntry] {
-        print("[DEBUG] XMLParser.parse() starting...")
+        if Log.isDebugMode {
+            Log.debug("XMLParser.parse() starting...", category: "RSS")
+        }
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.parse()
-        print("[DEBUG] XMLParser.parse() completed, \(entries.count) entries")
+        if Log.isDebugMode {
+            Log.debug("XMLParser.parse() completed, \(entries.count) entries", category: "RSS")
+        }
         return entries
     }
     
@@ -189,9 +193,13 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         
         // 3. Fallback: extract book name from <em> tag (standalone, not "Parent Topic")
         if reference == nil {
-            print("[DEBUG] Calling extractBookName...")
+            if Log.isDebugMode {
+                Log.debug("Calling extractBookName...", category: "RSS")
+            }
             reference = extractBookName(from: currentContent)
-            print("[DEBUG] extractBookName done")
+            if Log.isDebugMode {
+                Log.debug("extractBookName done", category: "RSS")
+            }
         }
         
         // 4. Fallback: try extracting scripture reference from content text
@@ -199,9 +207,13 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         // All feeds now have <wisdom:source> so this is unnecessary
         /*
         if reference == nil {
-            print("[DEBUG] Calling extractReference...")
+            if Log.isDebugMode {
+                Log.debug("Calling extractReference...", category: "RSS")
+            }
             reference = extractReference(from: currentContent)
-            print("[DEBUG] extractReference done")
+            if Log.isDebugMode {
+                Log.debug("extractReference done", category: "RSS")
+            }
         }
         */
         

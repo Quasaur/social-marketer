@@ -126,7 +126,9 @@ class SocialEffectsService {
             throw SocialEffectsError.invalidResponse
         }
         
-        print("✅ Video generated: \(videoPath)")
+        if Log.isDebugMode {
+            Log.debug("Video generated: \(videoPath)", category: "SocialEffects")
+        }
         return videoPath
     }
     

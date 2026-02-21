@@ -55,7 +55,9 @@ class SocialEffectsProcessManager {
             try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             healthy = await checkHealth()
             if healthy { break }
-            print("  ⏳ Waiting for server... (attempt \(attempt)/10)")
+            if Log.isDebugMode {
+                Log.debug("Waiting for server... (attempt \(attempt)/10)", category: "SocialEffects")
+            }
         }
         
         isRunning = healthy
@@ -149,14 +151,18 @@ class SocialEffectsProcessManager {
             // First check if the process is still alive
             if let process = process {
                 if !process.isRunning {
-                    print("⚠️ Social Effects process terminated unexpectedly")
+                    if Log.isDebugMode {
+                        Log.debug("Social Effects process terminated unexpectedly", category: "SocialEffects")
+                    }
                     isRunning = false
                     self.process = nil
                     return false
                 }
             } else if isRunning {
                 // Process is nil but flag says running - inconsistent state
-                print("⚠️ Social Effects process nil but flag says running")
+                if Log.isDebugMode {
+                    Log.debug("Social Effects process nil but flag says running", category: "SocialEffects")
+                }
                 isRunning = false
                 return false
             }
@@ -164,8 +170,8 @@ class SocialEffectsProcessManager {
             // Process exists and is running, check health
             if !isRunning { return false }
             let healthy = await checkHealth()
-            if !healthy {
-                print("⚠️ Social Effects process running but not responding to health check")
+            if !healthy && Log.isDebugMode {
+                Log.debug("Social Effects process running but not responding to health check", category: "SocialEffects")
             }
             return healthy
         }

@@ -133,7 +133,9 @@ struct SocialMarketerApp: App {
                 for (name, apiType) in canonicalPlatforms where !existingNames.contains(name) {
                     _ = Platform(context: context, name: name, apiType: apiType)
                     Log.app.notice("Added missing platform: \(name)")
-                    print("[seedPlatforms] Added: \(name)")
+                    if Log.isDebugMode {
+                        Log.debug("[seedPlatforms] Added: \(name)", category: "App")
+                    }
                     changed = true
                 }
                 
@@ -217,12 +219,16 @@ struct SocialMarketerApp: App {
                     platform.isEnabled = true
                     updated += 1
                     Log.app.notice("Auto-enabled platform: \(name) (Keychain credentials found)")
-                    print("[syncPlatform] Auto-enabled: \(name)")
+                    if Log.isDebugMode {
+                        Log.debug("[syncPlatform] Auto-enabled: \(name)", category: "App")
+                    }
                 } else if !hasCredentials && platform.isEnabled {
                     platform.isEnabled = false
                     updated += 1
                     Log.app.notice("Auto-disabled platform: \(name) (no Keychain credentials)")
-                    print("[syncPlatform] Auto-disabled: \(name)")
+                    if Log.isDebugMode {
+                        Log.debug("[syncPlatform] Auto-disabled: \(name)", category: "App")
+                    }
                 }
             }
             

@@ -56,7 +56,9 @@ final class PersistenceController {
             if let storeURL = Self.sharedStoreURL {
                 container.persistentStoreDescriptions.first?.url = storeURL
                 logger.notice("Core Data store: \(storeURL.path)")
-                print("[PersistenceController] Store path: \(storeURL.path)")
+                if Log.isDebugMode {
+                    Log.debug("[PersistenceController] Store path: \(storeURL.path)", category: "Persistence")
+                }
             }
         }
         
