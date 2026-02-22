@@ -167,31 +167,35 @@ extension QuoteGraphicGenerator {
                   controlPoint2: NSPoint(x: o.x + dx * 42, y: o.y + dy * 65))
         id2.lineWidth = 1.5; id2.stroke()
         
-        drawLeaf(at: NSPoint(x: o.x + dx * 15, y: o.y + dy * 40), angle: atan2(dy, dx) + .pi/3, size: 9)
-        drawLeaf(at: NSPoint(x: o.x + dx * 8, y: o.y + dy * 70), angle: atan2(dy, dx) - .pi/4, size: 8)
-        drawLeaf(at: NSPoint(x: o.x + dx * 20, y: o.y + dy * 110), angle: atan2(dy, dx) + .pi/5, size: 8)
-        drawLeaf(at: NSPoint(x: o.x + dx * 10, y: o.y + dy * 150), angle: atan2(dy, dx) - .pi/3, size: 7)
-        drawLeaf(at: NSPoint(x: o.x + dx * 18, y: o.y + dy * 195), angle: atan2(dy, dx) + .pi/6, size: 7)
-        drawLeaf(at: NSPoint(x: o.x + dx * 15, y: o.y + dy * 240), angle: atan2(dy, dx) - .pi/4, size: 6)
-        drawLeaf(at: NSPoint(x: o.x + dx * 20, y: o.y + dy * 265), angle: atan2(dy, dx) + .pi/3, size: 5)
+        // Draw leaves using data-driven approach
+        let verticalLeaves: [(px: CGFloat, py: CGFloat, angleOffset: CGFloat, size: CGFloat)] = [
+            (15, 40, .pi/3, 9), (8, 70, -.pi/4, 8), (20, 110, .pi/5, 8),
+            (10, 150, -.pi/3, 7), (18, 195, .pi/6, 7), (15, 240, -.pi/4, 6), (20, 265, .pi/3, 5)
+        ]
+        let horizontalLeaves: [(px: CGFloat, py: CGFloat, angleOffset: CGFloat, size: CGFloat)] = [
+            (40, 15, -.pi/3, 9), (70, 8, .pi/4, 8), (110, 20, -.pi/5, 8),
+            (150, 10, .pi/3, 7), (195, 18, -.pi/6, 7), (240, 15, .pi/4, 6), (265, 20, -.pi/3, 5)
+        ]
+        let diagonalLeaves: [(px: CGFloat, py: CGFloat, angleOffset: CGFloat, size: CGFloat)] = [
+            (30, 28, 0, 8), (60, 55, .pi/2, 7), (85, 88, -.pi/4, 7),
+            (45, 130, .pi/3, 6), (130, 45, -.pi/3, 6), (30, 215, .pi/4, 5), (215, 30, -.pi/4, 5)
+        ]
         
-        drawLeaf(at: NSPoint(x: o.x + dx * 40, y: o.y + dy * 15), angle: atan2(dy, dx) - .pi/3, size: 9)
-        drawLeaf(at: NSPoint(x: o.x + dx * 70, y: o.y + dy * 8), angle: atan2(dy, dx) + .pi/4, size: 8)
-        drawLeaf(at: NSPoint(x: o.x + dx * 110, y: o.y + dy * 20), angle: atan2(dy, dx) - .pi/5, size: 8)
-        drawLeaf(at: NSPoint(x: o.x + dx * 150, y: o.y + dy * 10), angle: atan2(dy, dx) + .pi/3, size: 7)
-        drawLeaf(at: NSPoint(x: o.x + dx * 195, y: o.y + dy * 18), angle: atan2(dy, dx) - .pi/6, size: 7)
-        drawLeaf(at: NSPoint(x: o.x + dx * 240, y: o.y + dy * 15), angle: atan2(dy, dx) + .pi/4, size: 6)
-        drawLeaf(at: NSPoint(x: o.x + dx * 265, y: o.y + dy * 20), angle: atan2(dy, dx) - .pi/3, size: 5)
+        let baseAngle = atan2(dy, dx)
+        for leaf in verticalLeaves {
+            drawLeaf(at: NSPoint(x: o.x + dx * leaf.px, y: o.y + dy * leaf.py),
+                     angle: baseAngle + leaf.angleOffset, size: leaf.size)
+        }
+        for leaf in horizontalLeaves {
+            drawLeaf(at: NSPoint(x: o.x + dx * leaf.px, y: o.y + dy * leaf.py),
+                     angle: baseAngle + leaf.angleOffset, size: leaf.size)
+        }
+        for leaf in diagonalLeaves {
+            drawLeaf(at: NSPoint(x: o.x + dx * leaf.px, y: o.y + dy * leaf.py),
+                     angle: leaf.angleOffset == 0 ? baseAngle : leaf.angleOffset, size: leaf.size)
+        }
         
-        drawLeaf(at: NSPoint(x: o.x + dx * 30, y: o.y + dy * 28), angle: atan2(dy, dx), size: 8)
-        drawLeaf(at: NSPoint(x: o.x + dx * 60, y: o.y + dy * 55), angle: atan2(dy, dx) + .pi/2, size: 7)
-        drawLeaf(at: NSPoint(x: o.x + dx * 85, y: o.y + dy * 88), angle: atan2(dy, dx) - .pi/4, size: 7)
-        
-        drawLeaf(at: NSPoint(x: o.x + dx * 45, y: o.y + dy * 130), angle: .pi/3, size: 6)
-        drawLeaf(at: NSPoint(x: o.x + dx * 130, y: o.y + dy * 45), angle: -.pi/3, size: 6)
-        drawLeaf(at: NSPoint(x: o.x + dx * 30, y: o.y + dy * 215), angle: .pi/4, size: 5)
-        drawLeaf(at: NSPoint(x: o.x + dx * 215, y: o.y + dy * 30), angle: -.pi/4, size: 5)
-        
+        // Draw dots
         let dotPositions: [(CGFloat, CGFloat)] = [
             (8, 25), (25, 8), (15, 15), (40, 40),
             (60, 60), (80, 80), (35, 55), (55, 35),

@@ -57,11 +57,11 @@ extension QuoteGraphicGenerator {
     func drawModernGlowBorder() {
         let w = imageSize.width, h = imageSize.height
         
+        // Use pre-computed cached colors instead of creating new ones each time
         for i in (0..<8).reversed() {
             let inset = CGFloat(12 + i * 6)
-            let alpha = 0.08 + (1.0 - Double(i) / 7.0) * 0.92
             let lw = CGFloat(1 + (7 - i))
-            NSColor(red: 212/255, green: 175/255, blue: 55/255, alpha: CGFloat(alpha)).setStroke()
+            CachedGoldColors.modernGlow[i].setStroke()
             let path = NSBezierPath(roundedRect: NSRect(x: inset, y: inset, width: w-inset*2, height: h-inset*2),
                                      xRadius: 8, yRadius: 8)
             path.lineWidth = lw; path.stroke()
@@ -72,11 +72,11 @@ extension QuoteGraphicGenerator {
         let innerPath = NSBezierPath(roundedRect: inner, xRadius: 4, yRadius: 4)
         innerPath.lineWidth = 2; innerPath.stroke()
         
+        // Use pre-computed corner glow colors
         for (cx, cy) in [(inner.minX, inner.minY), (inner.maxX, inner.minY),
                           (inner.minX, inner.maxY), (inner.maxX, inner.maxY)] {
-            for (r, a) in [(CGFloat(14), CGFloat(0.1)), (CGFloat(9), CGFloat(0.3)),
-                           (CGFloat(5), CGFloat(0.7)), (CGFloat(2.5), CGFloat(1.0))] {
-                NSColor(red: 212/255, green: 175/255, blue: 55/255, alpha: a).setFill()
+            for (r, a) in CachedGoldColors.cornerGlow {
+                CachedGoldColors.modernGlow[Int((1.0 - a) * 7)].setFill()
                 NSBezierPath(ovalIn: NSRect(x: cx-r, y: cy-r, width: r*2, height: r*2)).fill()
             }
         }
