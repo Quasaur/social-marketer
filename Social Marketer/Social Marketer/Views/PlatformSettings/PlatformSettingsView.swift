@@ -3,27 +3,28 @@
 //  SocialMarketer
 //
 //  UI for connecting and managing social media platform accounts
+//  Refactored to use TestPostManager for unified test post handling
 //
 
 import SwiftUI
 
 struct PlatformSettingsView: View {
     @StateObject var oauthManager = OAuthManager.shared
+    @StateObject var testManager = TestPostManager.shared
     @State var connectionStatus: [String: ConnectionState] = [:]
     @State var credentialStatus: [String: Bool] = [:]
-    @State var showingError = false
-    @State var errorMessage = ""
     @State var selectedPlatform: PlatformInfo?
     
-    // Test states
-    @State var linkedinTesting = false
-    @State var showingSuccess = false
-    @State var twitterTesting = false
-    @State var successMessage = ""
-    @State var facebookTesting = false
+    // Legacy test states (for Instagram, Pinterest, YouTube - migrate later)
     @State var instagramTesting = false
     @State var pinterestTesting = false
     @State var youtubeTesting = false
+    
+    // Legacy alert states (for Instagram, Pinterest, YouTube - migrate later)
+    @State var showingError = false
+    @State var errorMessage = ""
+    @State var showingSuccess = false
+    @State var successMessage = ""
     
     // Tier expansion state
     @State var tier2Expanded = false
@@ -106,16 +107,8 @@ struct PlatformSettingsView: View {
         .onAppear {
             loadStates()
         }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK") {}
-        } message: {
-            Text(errorMessage)
-        }
-        .alert("Success", isPresented: $showingSuccess) {
-            Button("OK") {}
-        } message: {
-            Text(successMessage)
-        }
+        // Unified alert handling via TestPostManager
+        .testPostAlerts(manager: testManager)
         .sheet(item: $selectedPlatform) { platform in
             sheetContent(for: platform)
         }

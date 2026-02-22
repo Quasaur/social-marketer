@@ -3,6 +3,7 @@
 //  SocialMarketer
 //
 //  Connection management for PlatformSettingsView
+//  Refactored to use TestPostManager for test post buttons
 //
 
 import SwiftUI
@@ -50,8 +51,8 @@ extension PlatformSettingsView {
             connectionStatus[platform.id] = .connected
         } catch {
             connectionStatus[platform.id] = .disconnected
-            errorMessage = error.localizedDescription
-            showingError = true
+            // Use TestPostManager for consistent error handling
+            TestPostManager.shared.showError(error.localizedDescription)
         }
     }
     
@@ -65,67 +66,72 @@ extension PlatformSettingsView {
             }
             connectionStatus[platform.id] = .disconnected
         } catch {
-            errorMessage = error.localizedDescription
-            showingError = true
+            TestPostManager.shared.showError(error.localizedDescription)
         }
     }
     
+    /// Returns test button for connected platforms using TestPostManager
     func extraButton(for platform: PlatformInfo) -> AnyView? {
-        if platform.id == "twitter" && connectionStatus["twitter"] == .connected {
-            return AnyView(
-                Button(twitterTesting ? "Posting..." : "Test Tweet") {
-                    Task { await testTwitterPost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(twitterTesting)
-            )
-        } else if platform.id == "linkedin" && connectionStatus["linkedin"] == .connected {
-            return AnyView(
-                Button(linkedinTesting ? "Posting..." : "Test Post") {
-                    Task { await testLinkedInPost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(linkedinTesting)
-            )
-        } else if platform.id == "facebook" && connectionStatus["facebook"] == .connected {
-            return AnyView(
-                Button(facebookTesting ? "Posting..." : "Test Post") {
-                    Task { await testFacebookPost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(facebookTesting)
-            )
-        } else if platform.id == "instagram" && connectionStatus["instagram"] == .connected {
-            return AnyView(
-                Button(instagramTesting ? "Posting..." : "Test Post") {
-                    Task { await testInstagramPost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(instagramTesting)
-            )
-        } else if platform.id == "pinterest" && connectionStatus["pinterest"] == .connected {
-            return AnyView(
-                Button(pinterestTesting ? "Posting..." : "Test Pin") {
-                    Task { await testPinterestPost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(pinterestTesting)
-            )
-        } else if platform.id == "youtube" && connectionStatus["youtube"] == .connected {
-            return AnyView(
-                Button(youtubeTesting ? "Posting..." : "Test Post") {
-                    Task { await testYouTubePost() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(youtubeTesting)
-            )
+        guard connectionStatus[platform.id] == .connected else { return nil }
+        
+        switch platform.id {
+        case "twitter":
+            return AnyView(TestPostButton(
+                platform: "twitter",
+                label: "Test Tweet",
+                manager: testManager
+            ) {
+                await testManager.testTwitterPost()
+            })
+            
+        case "linkedin":
+            return AnyView(TestPostButton(
+                platform: "linkedin",
+                label: "Test Post",
+                manager: testManager
+            ) {
+                await testManager.testLinkedInPost(oauthManager: oauthManager)
+            })
+            
+        case "facebook":
+            return AnyView(TestPostButton(
+                platform: "facebook",
+                label: "Test Post",
+                manager: testManager
+            ) {
+                await testManager.testFacebookPost()
+            })
+            
+        case "instagram":
+            return AnyView(TestPostButton(
+                platform: "instagram",
+                label: "Test Post",
+                manager: testManager
+            ) {
+                await testInstagramPost()
+            })
+            
+        case "pinterest":
+            return AnyView(TestPostButton(
+                platform: "pinterest",
+                label: "Test Pin",
+                manager: testManager
+            ) {
+                await testPinterestPost()
+            })
+            
+        case "youtube":
+            return AnyView(TestPostButton(
+                platform: "youtube",
+                label: "Test Post",
+                manager: testManager
+            ) {
+                await testYouTubePost()
+            })
+            
+        default:
+            return nil
         }
-        return nil
     }
 }
+
