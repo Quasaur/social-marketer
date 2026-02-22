@@ -50,7 +50,7 @@ extension QuoteGraphicGenerator {
             let o2 = NSBezierPath(ovalIn: NSRect(x: cx-knotR/2, y: cy-knotR, width: knotR, height: knotR*2))
             o2.lineWidth = 2.5; o2.stroke()
             goldColor.setFill()
-            NSBezierPath(ovalIn: NSRect(x: cx-4, y: cy-4, width: 8, height: 8)).fill()
+            fillCircle(at: NSPoint(x: cx, y: cy), diameter: 8)
         }
         
         let step: CGFloat = 55

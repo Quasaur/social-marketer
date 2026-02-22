@@ -172,7 +172,7 @@ extension QuoteGraphicGenerator {
     
     private func drawOrnamentDot(at p: NSPoint) {
         goldColor.setFill()
-        NSBezierPath(ovalIn: NSRect(x: p.x-3, y: p.y-3, width: 6, height: 6)).fill()
+        fillCircle(at: p, diameter: 6)
         let ring = NSBezierPath(ovalIn: NSRect(x: p.x-8, y: p.y-8, width: 16, height: 16))
         ring.lineWidth = 1; ring.stroke()
     }

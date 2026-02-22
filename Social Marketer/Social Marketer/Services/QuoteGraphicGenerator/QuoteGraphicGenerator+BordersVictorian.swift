@@ -50,7 +50,7 @@ extension QuoteGraphicGenerator {
             petal.lineWidth = 1; petal.stroke()
         }
         goldColor.setFill()
-        NSBezierPath(ovalIn: NSRect(x: p.x-2.5, y: p.y-2.5, width: 5, height: 5)).fill()
+        fillCircle(at: p, diameter: 5)
     }
     
     // MARK: - 8. Golden Vine — Intro Post style: lush corner scrollwork
@@ -192,7 +192,7 @@ extension QuoteGraphicGenerator {
             (10, 125), (125, 10), (50, 80), (80, 50)
         ]
         for (px, py) in dotPositions {
-            NSBezierPath(ovalIn: NSRect(x: o.x + dx*px - 2, y: o.y + dy*py - 2, width: 4, height: 4)).fill()
+            fillCircle(at: NSPoint(x: o.x + dx*px, y: o.y + dy*py), diameter: 4)
         }
     }
 }

@@ -200,7 +200,7 @@ extension QuoteGraphicGenerator {
             (18, 250), (250, 18), (45, 100), (100, 45)
         ]
         for (px, py) in dotPositions {
-            NSBezierPath(ovalIn: NSRect(x: o.x + dx*px - 2, y: o.y + dy*py - 2, width: 4, height: 4)).fill()
+            fillCircle(at: NSPoint(x: o.x + dx*px, y: o.y + dy*py), diameter: 4)
         }
     }
 }

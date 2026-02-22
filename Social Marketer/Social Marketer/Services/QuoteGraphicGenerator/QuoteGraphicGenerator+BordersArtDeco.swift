@@ -98,7 +98,7 @@ extension QuoteGraphicGenerator {
         
         for (px, py) in [(o.x + dx*5, o.y + dy*25), (o.x + dx*25, o.y + dy*5),
                           (o.x + dx*35, o.y + dy*35)] {
-            NSBezierPath(ovalIn: NSRect(x: px-2, y: py-2, width: 4, height: 4)).fill()
+            fillCircle(at: NSPoint(x: px, y: py), diameter: 4)
         }
     }
     

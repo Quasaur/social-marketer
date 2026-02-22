@@ -32,6 +32,13 @@ extension QuoteGraphicGenerator {
         d.fill()
     }
     
+    /// Fill a circle at the given center point with the given diameter
+    func fillCircle(at center: NSPoint, diameter: CGFloat) {
+        let radius = diameter / 2
+        NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius,
+                                     width: diameter, height: diameter)).fill()
+    }
+    
     /// Draw a small teardrop/leaf shape
     func drawLeaf(at center: NSPoint, angle: CGFloat, size: CGFloat) {
         let path = NSBezierPath()
