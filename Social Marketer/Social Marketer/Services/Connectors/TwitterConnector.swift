@@ -2,7 +2,7 @@
 //  TwitterConnector.swift
 //  SocialMarketer
 //
-//  Created by Automation on 2026-02-16.
+//  Refactored to use MultipartFormBuilder for media uploads.
 //
 
 import Foundation
@@ -11,6 +11,7 @@ import AppKit
 // MARK: - Twitter/X Connector
 
 final class TwitterConnector: PlatformConnector {
+    
     let platformName = "X (Twitter)"
     private let logger = Log.twitter
     private var signer: OAuth1Signer?
@@ -86,20 +87,16 @@ final class TwitterConnector: PlatformConnector {
     private func uploadMedia(imageData: Data, signer: OAuth1Signer) async throws -> String {
         let url = URL(string: "https://upload.twitter.com/1.1/media/upload.json")!
         
+        // Use MultipartFormBuilder for constructing the body
+        var builder = MultipartFormBuilder()
+        builder.addJPEGImage(name: "media", data: imageData)
+        
+        let (body, contentType) = builder.build()
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
-        var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"media\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        
         request.httpBody = body
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         
         // Sign with OAuth 1.0a (multipart body is NOT included in signature base)
         let signedRequest = signer.sign(request)

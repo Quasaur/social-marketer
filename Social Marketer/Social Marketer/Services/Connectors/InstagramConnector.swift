@@ -2,7 +2,7 @@
 //  InstagramConnector.swift
 //  SocialMarketer
 //
-//  Created by Automation on 2026-02-16.
+//  Refactored to use BasePlatformConnector and MultipartFormBuilder.
 //
 
 import Foundation
@@ -10,13 +10,14 @@ import AppKit
 
 // MARK: - Instagram Connector
 
-final class InstagramConnector: VideoPlatformConnector {
-    let platformName = "Instagram"
-    private let logger = Log.instagram
+final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
+    
+    override var platformName: String { "Instagram" }
+    
     private var accessToken: String?
     private var businessAccountID: String?
     
-    // Internal struct for caching business account ID (distinct from PlatformCredentials.InstagramCredentials)
+    // Internal struct for caching business account ID
     struct InstagramCredentials: Codable {
         let businessAccountID: String
         let pageName: String
@@ -24,7 +25,6 @@ final class InstagramConnector: VideoPlatformConnector {
     
     var isConfigured: Bool {
         get async {
-            // First try loading cached credentials
             if let cached = try? KeychainService.shared.retrieve(InstagramCredentials.self, for: "instagram_business") {
                 businessAccountID = cached.businessAccountID
             }
@@ -40,77 +40,36 @@ final class InstagramConnector: VideoPlatformConnector {
     }
     
     func authenticate() async throws {
-        let config = try OAuthManager.shared.getConfig(for: "instagram")
-        let tokens = try await OAuthManager.shared.authenticate(
-            platform: "instagram",
-            config: config
-        )
-        try OAuthManager.shared.saveTokens(tokens, for: "instagram")
+        let tokens = try await performOAuthAuthentication()
         accessToken = tokens.accessToken
-        
-        // Discover the Instagram Business Account ID
         try await fetchInstagramBusinessAccountID(userToken: tokens.accessToken)
     }
     
     private func fetchInstagramBusinessAccountID(userToken: String) async throws {
-        // Step 1: Get Pages (similar to Facebook flow)
+        // Step 1: Get Pages
         let pagesURL = URL(string: "https://graph.facebook.com/v24.0/me/accounts?access_token=\(userToken)")!
-        let (pagesData, pagesResponse) = try await URLSession.shared.data(from: pagesURL)
+        let pagesResponse = try await performJSONRequest(getRequest(url: pagesURL), decoding: PagesResponse.self)
         
-        guard let httpResponse = pagesResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: pagesData, encoding: .utf8) ?? "Unknown error"
-            logger.error("Failed to fetch pages for Instagram: \(errorBody)")
-            throw PlatformError.postFailed("Failed to fetch pages for Instagram: \(errorBody)")
-        }
-        
-        struct PagesResponse: Decodable {
-            struct Page: Decodable {
-                let id: String
-                let name: String
-                let access_token: String
-            }
-            let data: [Page]
-        }
-        
-        let pagesResult = try JSONDecoder().decode(PagesResponse.self, from: pagesData)
-        
-        guard let page = pagesResult.data.first else {
+        guard let page = pagesResponse.data.first else {
             throw PlatformError.postFailed("No Facebook Pages found. Instagram Business accounts must be linked to a Facebook Page.")
         }
         
-        // Use the first page or find "The Book of Wisdom"
-        let targetPage = pagesResult.data.first(where: {
+        let targetPage = pagesResponse.data.first(where: {
             $0.name.localizedCaseInsensitiveContains("wisdom") ||
             $0.name.localizedCaseInsensitiveContains("book")
         }) ?? page
         
-        // Step 2: Get the Instagram Business Account ID from the Page
+        // Step 2: Get Instagram Business Account ID
         let igURL = URL(string: "https://graph.facebook.com/v24.0/\(targetPage.id)?fields=instagram_business_account&access_token=\(targetPage.access_token)")!
-        let (igData, igResponse) = try await URLSession.shared.data(from: igURL)
+        let igResponse = try await performJSONRequest(getRequest(url: igURL), decoding: IGAccountResponse.self)
         
-        guard let igHttp = igResponse as? HTTPURLResponse, igHttp.statusCode == 200 else {
-            let errorBody = String(data: igData, encoding: .utf8) ?? "Unknown error"
-            logger.error("Failed to get Instagram Business Account: \(errorBody)")
-            throw PlatformError.postFailed("Failed to get Instagram Business Account: \(errorBody)")
-        }
-        
-        struct IGAccountResponse: Decodable {
-            struct IGAccount: Decodable {
-                let id: String
-            }
-            let instagram_business_account: IGAccount?
-        }
-        
-        let igResult = try JSONDecoder().decode(IGAccountResponse.self, from: igData)
-        
-        guard let igAccount = igResult.instagram_business_account else {
-            throw PlatformError.postFailed("No Instagram Business Account linked to '\(targetPage.name)'. Go to your Facebook Page Settings → Instagram and connect your Instagram account.")
+        guard let igAccount = igResponse.instagram_business_account else {
+            throw PlatformError.postFailed("No Instagram Business Account linked to '\(targetPage.name)'.")
         }
         
         businessAccountID = igAccount.id
         
-        // Also store the page access token for Instagram API calls
-        // Instagram Content Publishing API uses the Page Access Token
+        // Store Page Access Token for Instagram API calls
         let igTokens = OAuthManager.OAuthTokens(
             accessToken: targetPage.access_token,
             refreshToken: nil,
@@ -122,14 +81,14 @@ final class InstagramConnector: VideoPlatformConnector {
         try OAuthManager.shared.saveTokens(igTokens, for: "instagram")
         accessToken = targetPage.access_token
         
-        // Persist business account ID
+        // Persist credentials
         let creds = InstagramCredentials(
             businessAccountID: igAccount.id,
             pageName: targetPage.name
         )
         try KeychainService.shared.save(creds, for: "instagram_business")
         
-        logger.info("Instagram Business Account connected: \(igAccount.id) (via page: \(targetPage.name))")
+        logInfo("Instagram Business Account connected: \(igAccount.id) (via page: \(targetPage.name))")
     }
     
     func configure(businessAccountID: String) {
@@ -137,8 +96,6 @@ final class InstagramConnector: VideoPlatformConnector {
     }
     
     func postText(_ text: String) async throws -> PostResult {
-        // Instagram doesn't support text-only posts, but we can post a link card
-        // For now, return an error directing users to post with an image
         throw PlatformError.postFailed("Instagram requires an image. Please use the image post feature.")
     }
     
@@ -151,13 +108,9 @@ final class InstagramConnector: VideoPlatformConnector {
             throw PlatformError.postFailed("Failed to convert image to JPEG")
         }
         
-        // Instagram requires images at a publicly accessible URL.
-        // Upload to Facebook Page as an unpublished photo to get a CDN URL.
         let publicImageURL = try await uploadImageToFacebookCDN(imageData: imageData, token: token)
-        
         let igCaption = "\(caption)\n\n📖 Read more at \(AppConfiguration.URLs.wisdomBookDomain) (link in bio)"
         
-        // Step 1: Create container with public image URL
         let containerID = try await createMediaContainer(
             imageURL: publicImageURL,
             caption: igCaption,
@@ -165,23 +118,14 @@ final class InstagramConnector: VideoPlatformConnector {
             token: token
         )
         
-        // Step 2: Wait for container to be ready (Instagram processes async)
         try await waitForContainerReady(containerID: containerID, token: token)
-        
-        // Step 3: Publish the container
         let mediaID = try await publishContainer(containerID: containerID, accountID: accountID, token: token)
         
-        logger.info("Instagram post published: \(mediaID)")
+        logInfo("Instagram post published: \(mediaID)")
         
-        // Get the permalink (shortcode URL) for the post
         let permalink = try? await fetchPermalink(mediaID: mediaID, token: token)
         
-        return PostResult(
-            success: true,
-            postID: mediaID,
-            postURL: permalink,
-            error: nil
-        )
+        return PostResult(success: true, postID: mediaID, postURL: permalink, error: nil)
     }
     
     func postVideo(_ videoURL: URL, caption: String) async throws -> PostResult {
@@ -189,16 +133,11 @@ final class InstagramConnector: VideoPlatformConnector {
             throw PlatformError.notConfigured
         }
         
-        logger.info("Posting video to Instagram (Reels)...")
+        logInfo("Posting video to Instagram (Reels)...")
         
-        // 1. Upload video to a public URL (Facebook Page Video)
-        // Instagram Graph API for video requires the video to be at a public URL.
-        // We'll upload to Facebook Page as unpublished video to get a URL.
         let publicVideoURL = try await uploadVideoToFacebook(videoURL: videoURL, token: token)
-        
         let igCaption = "\(caption)\n\n📖 Read more at \(AppConfiguration.URLs.wisdomBookDomain) (link in bio)"
         
-        // 2. Create Media Container (REELS)
         let containerID = try await createReelsContainer(
             videoURL: publicVideoURL,
             caption: igCaption,
@@ -206,124 +145,59 @@ final class InstagramConnector: VideoPlatformConnector {
             token: token
         )
         
-        // 3. Wait for processing
         try await waitForContainerReady(containerID: containerID, token: token)
-        
-        // 4. Publish
         let mediaID = try await publishContainer(containerID: containerID, accountID: accountID, token: token)
         
-        logger.info("Instagram Reel published: \(mediaID)")
+        logInfo("Instagram Reel published: \(mediaID)")
         
-        // Get the permalink (shortcode URL) for the reel
         let permalink = try? await fetchPermalink(mediaID: mediaID, token: token)
         
-        return PostResult(
-            success: true,
-            postID: mediaID,
-            postURL: permalink,
-            error: nil
-        )
+        return PostResult(success: true, postID: mediaID, postURL: permalink, error: nil)
     }
     
-    /// Upload image to Facebook Page as an unpublished photo to get a public CDN URL for Instagram
+    // MARK: - Facebook CDN Uploads
+    
     private func uploadImageToFacebookCDN(imageData: Data, token: String) async throws -> String {
-        // Load Facebook Page credentials (we need the Page ID and Page Access Token)
-        let pageCreds: FacebookPageCredentials
-        do {
-            pageCreds = try KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page")
-        } catch {
-            throw PlatformError.postFailed("Facebook Page not configured. Connect Facebook first to enable Instagram image hosting.")
+        guard let pageCreds = try? KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page") else {
+            throw PlatformError.postFailed("Facebook Page not configured. Connect Facebook first.")
         }
         
-        // Upload as unpublished photo to Facebook Page
         let url = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/photos")!
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        // Use MultipartFormBuilder
+        var builder = MultipartFormBuilder()
+        builder.addField(name: "access_token", value: pageCreds.pageAccessToken)
+        builder.addField(name: "published", value: "false")
+        builder.addJPEGImage(name: "source", filename: "instagram_image.jpg", data: imageData)
         
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let (body, contentType) = builder.build()
+        let request = postRequest(url: url, body: body, contentType: contentType)
         
-        var body = Data()
+        let photoResponse = try await performJSONRequest(request, decoding: PhotoResponse.self)
         
-        // Access token
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"access_token\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(pageCreds.pageAccessToken)\r\n".data(using: .utf8)!)
-        
-        // Published = false (don't show on page feed)
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"published\"\r\n\r\n".data(using: .utf8)!)
-        body.append("false\r\n".data(using: .utf8)!)
-        
-        // Image data
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"source\"; filename=\"instagram_image.jpg\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        
-        request.httpBody = body
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Facebook image upload failed: \(errorBody)")
-        }
-        
-        struct PhotoResponse: Decodable {
-            let id: String
-        }
-        
-        let photoResponse = try JSONDecoder().decode(PhotoResponse.self, from: data)
-        
-        // Now get the CDN source URL of the uploaded photo
+        // Get CDN URL
         let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(photoResponse.id)?fields=images&access_token=\(pageCreds.pageAccessToken)")!
-        let (sourceData, sourceResponse) = try await URLSession.shared.data(from: sourceURL)
+        let imageResponse = try await performJSONRequest(getRequest(url: sourceURL), decoding: ImageResponse.self)
         
-        guard let sourceHttp = sourceResponse as? HTTPURLResponse, sourceHttp.statusCode == 200 else {
-            let errorBody = String(data: sourceData, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Failed to get image URL: \(errorBody)")
-        }
-        
-        struct ImageResponse: Decodable {
-            struct Image: Decodable {
-                let source: String
-                let width: Int
-                let height: Int
-            }
-            let images: [Image]
-        }
-        
-        let imageResponse = try JSONDecoder().decode(ImageResponse.self, from: sourceData)
-        
-        // Use the largest image (first in the array)
         guard let cdnURL = imageResponse.images.first?.source else {
             throw PlatformError.postFailed("No image URL returned from Facebook")
         }
         
-        logger.info("Image uploaded to Facebook CDN: \(cdnURL.prefix(80))...")
+        logInfo("Image uploaded to Facebook CDN: \(cdnURL.prefix(80))...")
         return cdnURL
     }
     
-    /// Upload video to Facebook Page as unpublished to get a public URL for Instagram
-    /// Uses resumable upload protocol for better reliability with larger files
     private func uploadVideoToFacebook(videoURL: URL, token: String) async throws -> String {
-        let pageCreds: FacebookPageCredentials
-        do {
-            pageCreds = try KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page")
-        } catch {
+        guard let pageCreds = try? KeychainService.shared.retrieve(FacebookPageCredentials.self, for: "facebook_page") else {
             throw PlatformError.postFailed("Facebook Page not configured. Required for hosting video.")
         }
         
-        // Check file size
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: videoURL.path)
         let fileSize = fileAttributes[.size] as? Int64 ?? 0
         let fileSizeMB = Double(fileSize) / 1024 / 1024
-        logger.info("Uploading video to Facebook: \(String(format: "%.1f", fileSizeMB)) MB")
         
-        // For files under 50MB, use simple upload; for larger files, use resumable upload
+        logInfo("Uploading video to Facebook: \(String(format: "%.1f", fileSizeMB)) MB")
+        
         if fileSizeMB < 50 {
             return try await uploadVideoSimple(videoURL: videoURL, pageCreds: pageCreds)
         } else {
@@ -331,72 +205,32 @@ final class InstagramConnector: VideoPlatformConnector {
         }
     }
     
-    /// Simple direct upload for smaller videos (< 50MB)
     private func uploadVideoSimple(videoURL: URL, pageCreds: FacebookPageCredentials) async throws -> String {
         let videoData = try Data(contentsOf: videoURL)
         let url = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        var builder = MultipartFormBuilder()
+        builder.addField(name: "access_token", value: pageCreds.pageAccessToken)
+        builder.addField(name: "published", value: "false")
+        builder.addMP4Video(name: "source", data: videoData)
         
-        let boundary = UUID().uuidString
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        let (body, contentType) = builder.build()
+        let request = postRequest(url: url, body: body, contentType: contentType)
         
-        var body = Data()
+        let vidResp = try await performJSONRequest(request, decoding: VideoResponse.self)
         
-        // Access Token
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"access_token\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(pageCreds.pageAccessToken)\r\n".data(using: .utf8)!)
-        
-        // Published = false
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"published\"\r\n\r\n".data(using: .utf8)!)
-        body.append("false\r\n".data(using: .utf8)!)
-        
-        // Video Data
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"source\"; filename=\"video.mp4\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: video/mp4\r\n\r\n".data(using: .utf8)!)
-        body.append(videoData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        
-        request.httpBody = body
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Facebook video upload failed: \(errorBody)")
-        }
-        
-        struct VideoResponse: Decodable {
-            let id: String
-        }
-        let vidResp = try JSONDecoder().decode(VideoResponse.self, from: data)
-        
-        // Get Source URL
+        // Get source URL
         let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(vidResp.id)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
-        let (sourceData, _) = try await URLSession.shared.data(from: sourceURL)
+        let sourceResp = try await performJSONRequest(getRequest(url: sourceURL), decoding: VideoSourceResponse.self)
         
-        struct VideoSourceResponse: Decodable {
-            let source: String
-        }
-        let sourceResp = try JSONDecoder().decode(VideoSourceResponse.self, from: sourceData)
         return sourceResp.source
     }
     
-    /// Resumable upload for larger videos (>= 50MB)
-    /// Uses Facebook's resumable upload protocol with chunked transfer
     private func uploadVideoResumable(videoURL: URL, fileSize: Int64, pageCreds: FacebookPageCredentials) async throws -> String {
-        logger.info("Using resumable upload for large video (\(fileSize / 1024 / 1024) MB)")
+        logInfo("Using resumable upload for large video (\(fileSize / 1024 / 1024) MB)")
         
-        // Step 1: Initialize upload session
+        // Step 1: Initialize upload
         let initURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
-        
-        var initRequest = URLRequest(url: initURL)
-        initRequest.httpMethod = "POST"
-        initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let initBody: [String: Any] = [
             "access_token": pageCreds.pageAccessToken,
@@ -405,42 +239,17 @@ final class InstagramConnector: VideoPlatformConnector {
             "upload_phase": "start"
         ]
         
-        initRequest.httpBody = try JSONSerialization.data(withJSONObject: initBody)
+        var initRequest = postRequest(url: initURL, body: try JSONSerialization.data(withJSONObject: initBody), contentType: "application/json")
+        let initResp = try await performJSONRequest(initRequest, decoding: InitResponse.self)
         
-        let (initData, initResponse) = try await URLSession.shared.data(for: initRequest)
-        
-        guard let httpResponse = initResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: initData, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Failed to initialize resumable upload: \(errorBody)")
+        guard let sessionID = initResp.upload_session_id, let videoID = initResp.video_id else {
+            throw PlatformError.postFailed("Invalid upload init response")
         }
         
-        struct InitResponse: Decodable {
-            let upload_session_id: String?
-            let video_id: String?
-            let start_offset: String?
-            let end_offset: String?
-        }
+        logInfo("Resumable upload initialized. Session: \(sessionID), Video ID: \(videoID)")
         
-        let initResp: InitResponse
-        do {
-            initResp = try JSONDecoder().decode(InitResponse.self, from: initData)
-        } catch {
-            let responseString = String(data: initData, encoding: .utf8) ?? "Unable to decode"
-            logger.error("Failed to decode init response: \(responseString)")
-            throw PlatformError.postFailed("Failed to parse upload init response: \(responseString)")
-        }
-        
-        guard let sessionID = initResp.upload_session_id,
-              let videoID = initResp.video_id else {
-            let responseString = String(data: initData, encoding: .utf8) ?? "Unable to decode"
-            logger.error("Missing session_id or video_id in response: \(responseString)")
-            throw PlatformError.postFailed("Invalid upload init response: \(responseString)")
-        }
-        
-        logger.info("Resumable upload initialized. Session: \(sessionID), Video ID: \(videoID)")
-        
-        // Step 2: Upload file in chunks (8MB chunks)
-        let chunkSize = 8 * 1024 * 1024 // 8MB
+        // Step 2: Upload chunks
+        let chunkSize = 8 * 1024 * 1024
         let fileHandle = try FileHandle(forReadingFrom: videoURL)
         defer { fileHandle.closeFile() }
         
@@ -452,61 +261,21 @@ final class InstagramConnector: VideoPlatformConnector {
             fileHandle.seek(toFileOffset: UInt64(startOffset))
             let chunkData = fileHandle.readData(ofLength: currentChunkSize)
             
-            logger.info("Uploading chunk: \(startOffset) - \(startOffset + currentChunkSize)")
+            logInfo("Uploading chunk: \(startOffset) - \(startOffset + currentChunkSize)")
             
-            // Upload chunk
             let chunkURL = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
             
-            var chunkRequest = URLRequest(url: chunkURL)
-            chunkRequest.httpMethod = "POST"
+            var builder = MultipartFormBuilder()
+            builder.addField(name: "access_token", value: pageCreds.pageAccessToken)
+            builder.addField(name: "upload_phase", value: "transfer")
+            builder.addField(name: "upload_session_id", value: sessionID)
+            builder.addField(name: "start_offset", value: String(startOffset))
+            builder.addFile(name: "video_file_chunk", filename: "chunk.bin", contentType: "application/octet-stream", data: chunkData)
             
-            let boundary = UUID().uuidString
-            chunkRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            let (body, contentType) = builder.build()
+            let request = postRequest(url: chunkURL, body: body, contentType: contentType)
             
-            var chunkBody = Data()
-            
-            // Access Token
-            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Disposition: form-data; name=\"access_token\"\r\n\r\n".data(using: .utf8)!)
-            chunkBody.append("\(pageCreds.pageAccessToken)\r\n".data(using: .utf8)!)
-            
-            // Upload phase
-            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Disposition: form-data; name=\"upload_phase\"\r\n\r\n".data(using: .utf8)!)
-            chunkBody.append("transfer\r\n".data(using: .utf8)!)
-            
-            // Session ID
-            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Disposition: form-data; name=\"upload_session_id\"\r\n\r\n".data(using: .utf8)!)
-            chunkBody.append("\(sessionID)\r\n".data(using: .utf8)!)
-            
-            // Start offset
-            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Disposition: form-data; name=\"start_offset\"\r\n\r\n".data(using: .utf8)!)
-            chunkBody.append("\(startOffset)\r\n".data(using: .utf8)!)
-            
-            // Video chunk
-            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Disposition: form-data; name=\"video_file_chunk\"; filename=\"chunk.bin\"\r\n".data(using: .utf8)!)
-            chunkBody.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-            chunkBody.append(chunkData)
-            chunkBody.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-            
-            chunkRequest.httpBody = chunkBody
-            
-            let (chunkRespData, chunkResponse) = try await URLSession.shared.data(for: chunkRequest)
-            
-            guard let chunkHttpResp = chunkResponse as? HTTPURLResponse, chunkHttpResp.statusCode == 200 else {
-                let errorBody = String(data: chunkRespData, encoding: .utf8) ?? "Unknown error"
-                throw PlatformError.postFailed("Chunk upload failed: \(errorBody)")
-            }
-            
-            struct ChunkResponse: Decodable {
-                let start_offset: String?
-                let end_offset: String?
-            }
-            
-            let chunkResp = try JSONDecoder().decode(ChunkResponse.self, from: chunkRespData)
+            let chunkResp = try await performJSONRequest(request, decoding: ChunkResponse.self)
             
             if let nextOffset = chunkResp.start_offset {
                 startOffset = Int(nextOffset) ?? endOffset
@@ -517,44 +286,25 @@ final class InstagramConnector: VideoPlatformConnector {
         
         // Step 3: Finish upload
         let finishURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
-        
-        var finishRequest = URLRequest(url: finishURL)
-        finishRequest.httpMethod = "POST"
-        finishRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         let finishBody: [String: Any] = [
             "access_token": pageCreds.pageAccessToken,
             "upload_phase": "finish",
             "upload_session_id": sessionID
         ]
         
-        finishRequest.httpBody = try JSONSerialization.data(withJSONObject: finishBody)
+        var finishRequest = postRequest(url: finishURL, body: try JSONSerialization.data(withJSONObject: finishBody), contentType: "application/json")
+        _ = try await performJSONRequest(finishRequest, decoding: FinishResponse.self)
         
-        let (finishData, finishResponse) = try await URLSession.shared.data(for: finishRequest)
+        logInfo("Resumable upload complete. Video ID: \(videoID)")
         
-        guard let finishHttpResp = finishResponse as? HTTPURLResponse, finishHttpResp.statusCode == 200 else {
-            let errorBody = String(data: finishData, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Failed to finish upload: \(errorBody)")
-        }
-        
-        struct FinishResponse: Decodable {
-            let success: Bool?
-        }
-        
-        let _ = try JSONDecoder().decode(FinishResponse.self, from: finishData)
-        
-        logger.info("Resumable upload complete. Video ID: \(videoID)")
-        
-        // Get Source URL
+        // Get source URL
         let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(videoID)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
-        let (sourceData, _) = try await URLSession.shared.data(from: sourceURL)
+        let sourceResp = try await performJSONRequest(getRequest(url: sourceURL), decoding: VideoSourceResponse.self)
         
-        struct VideoSourceResponse: Decodable {
-            let source: String
-        }
-        let sourceResp = try JSONDecoder().decode(VideoSourceResponse.self, from: sourceData)
         return sourceResp.source
     }
+    
+    // MARK: - Instagram Containers
     
     private func createMediaContainer(imageURL: String, caption: String, accountID: String, token: String) async throws -> String {
         var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media")!
@@ -564,23 +314,9 @@ final class InstagramConnector: VideoPlatformConnector {
             URLQueryItem(name: "access_token", value: token)
         ]
         
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = "POST"
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("[Instagram] Container creation failed: \(errorBody)")
-            throw PlatformError.postFailed("Container creation failed: \(errorBody)")
-        }
-        
-        struct ContainerResponse: Decodable {
-            let id: String
-        }
-        
-        let containerResponse = try JSONDecoder().decode(ContainerResponse.self, from: data)
-        return containerResponse.id
+        let request = postRequest(url: components.url!)
+        let response = try await performJSONRequest(request, decoding: ContainerResponse.self)
+        return response.id
     }
     
     private func createReelsContainer(videoURL: String, caption: String, accountID: String, token: String) async throws -> String {
@@ -592,20 +328,9 @@ final class InstagramConnector: VideoPlatformConnector {
             URLQueryItem(name: "access_token", value: token)
         ]
         
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = "POST"
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw PlatformError.postFailed("Reels container creation failed: \(errorBody)")
-        }
-        
-        struct ContainerResponse: Decodable {
-            let id: String
-        }
-        return try JSONDecoder().decode(ContainerResponse.self, from: data).id
+        let request = postRequest(url: components.url!)
+        let response = try await performJSONRequest(request, decoding: ContainerResponse.self)
+        return response.id
     }
     
     private func publishContainer(containerID: String, accountID: String, token: String) async throws -> String {
@@ -615,35 +340,18 @@ final class InstagramConnector: VideoPlatformConnector {
             URLQueryItem(name: "access_token", value: token)
         ]
         
-        var request = URLRequest(url: components.url!)
-        request.httpMethod = "POST"
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("[Instagram] Publish failed: \(errorBody)")
-            throw PlatformError.postFailed("Publish failed: \(errorBody)")
-        }
-        
-        struct PublishResponse: Decodable {
-            let id: String
-        }
-        
-        let publishResponse = try JSONDecoder().decode(PublishResponse.self, from: data)
-        return publishResponse.id
+        let request = postRequest(url: components.url!)
+        let response = try await performJSONRequest(request, decoding: PublishResponse.self)
+        return response.id
     }
     
-    /// Poll container status until FINISHED (Instagram processes media asynchronously)
     private func waitForContainerReady(containerID: String, token: String, maxAttempts: Int = 10) async throws {
-        // Initial wait — container always needs some processing time
         try await Task.sleep(nanoseconds: 5_000_000_000)
         
         for attempt in 1...maxAttempts {
             let status = try await checkContainerStatus(containerID: containerID, token: token)
             
             if status == "FINISHED" {
-                // Brief extra delay — Instagram can report FINISHED before truly ready
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 print("[Instagram] Container ready after \(attempt) poll(s)")
                 return
@@ -651,7 +359,6 @@ final class InstagramConnector: VideoPlatformConnector {
                 throw PlatformError.postFailed("Instagram container processing failed")
             }
             
-            // Wait 3 seconds before next poll
             print("[Instagram] Container status: \(status) (attempt \(attempt)/\(maxAttempts))")
             try await Task.sleep(nanoseconds: 3_000_000_000)
         }
@@ -661,39 +368,89 @@ final class InstagramConnector: VideoPlatformConnector {
     
     private func checkContainerStatus(containerID: String, token: String) async throws -> String {
         let url = URL(string: "https://graph.facebook.com/v24.0/\(containerID)?fields=status_code&access_token=\(token)")!
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
-        
-        struct StatusResponse: Decodable {
-            let status_code: String?
-        }
-        
-        let statusResponse = try JSONDecoder().decode(StatusResponse.self, from: data)
-        return statusResponse.status_code ?? "UNKNOWN"
+        let response = try await performJSONRequest(getRequest(url: url), decoding: StatusResponse.self)
+        return response.status_code ?? "UNKNOWN"
     }
     
-    /// Fetch the permalink (shortcode URL) for a published media
     private func fetchPermalink(mediaID: String, token: String) async throws -> URL? {
         let url = URL(string: "https://graph.facebook.com/v24.0/\(mediaID)?fields=permalink&access_token=\(token)")!
+        let response = try await performJSONRequest(getRequest(url: url), decoding: PermalinkResponse.self)
         
-        let (data, response) = try await URLSession.shared.data(from: url)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            logger.warning("Failed to fetch permalink for media \(mediaID)")
-            return nil
-        }
-        
-        struct PermalinkResponse: Decodable {
-            let permalink: String?
-        }
-        
-        let permalinkResponse = try JSONDecoder().decode(PermalinkResponse.self, from: data)
-        
-        if let permalink = permalinkResponse.permalink {
-            logger.info("Fetched permalink: \(permalink)")
+        if let permalink = response.permalink {
+            logInfo("Fetched permalink: \(permalink)")
             return URL(string: permalink)
         }
-        
         return nil
+    }
+    
+    // MARK: - Response Types
+    
+    private struct PagesResponse: Decodable {
+        struct Page: Decodable {
+            let id: String
+            let name: String
+            let access_token: String
+        }
+        let data: [Page]
+    }
+    
+    private struct IGAccountResponse: Decodable {
+        struct IGAccount: Decodable {
+            let id: String
+        }
+        let instagram_business_account: IGAccount?
+    }
+    
+    private struct PhotoResponse: Decodable {
+        let id: String
+    }
+    
+    private struct ImageResponse: Decodable {
+        struct Image: Decodable {
+            let source: String
+            let width: Int
+            let height: Int
+        }
+        let images: [Image]
+    }
+    
+    private struct VideoResponse: Decodable {
+        let id: String
+    }
+    
+    private struct VideoSourceResponse: Decodable {
+        let source: String
+    }
+    
+    private struct InitResponse: Decodable {
+        let upload_session_id: String?
+        let video_id: String?
+        let start_offset: String?
+        let end_offset: String?
+    }
+    
+    private struct ChunkResponse: Decodable {
+        let start_offset: String?
+        let end_offset: String?
+    }
+    
+    private struct FinishResponse: Decodable {
+        let success: Bool?
+    }
+    
+    private struct ContainerResponse: Decodable {
+        let id: String
+    }
+    
+    private struct PublishResponse: Decodable {
+        let id: String
+    }
+    
+    private struct StatusResponse: Decodable {
+        let status_code: String?
+    }
+    
+    private struct PermalinkResponse: Decodable {
+        let permalink: String?
     }
 }
