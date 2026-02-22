@@ -71,29 +71,10 @@ final class LinkedInConnector: PlatformConnector {
     
     func setIdToken(_ idToken: String) {
         // Decode JWT to extract sub claim (person ID)
-        if let personID = decodeJWTSub(idToken) {
+        if let personID = JWTUtils.extractSubject(idToken) {
             self.personURN = "urn:li:person:\(personID)"
             logger.info("Person URN from id_token: \(self.personURN ?? "nil")")
         }
-    }
-    
-    private func decodeJWTSub(_ jwt: String) -> String? {
-        let parts = jwt.split(separator: ".")
-        guard parts.count >= 2 else { return nil }
-        
-        // Decode the payload (second part)
-        var base64 = String(parts[1])
-        // Add padding if needed
-        while base64.count % 4 != 0 {
-            base64 += "="
-        }
-        
-        guard let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters) else { return nil }
-        
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let sub = json["sub"] as? String else { return nil }
-        
-        return sub
     }
     
     /// Fetch personURN from LinkedIn /v2/userinfo endpoint (OpenID Connect)
