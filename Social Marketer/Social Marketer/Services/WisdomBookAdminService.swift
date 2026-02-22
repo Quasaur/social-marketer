@@ -9,7 +9,7 @@ class WisdomBookAdminService {
     private let adminToken = "9Rae4NVLhKz8yJ2xPwQmTn5FvBc6GsHtDk7UiWoA3Xe"
     
     /// Base URL for Wisdom Book API
-    private let baseURL = "https://www.wisdombook.life/api/users"
+    private var baseURL: String { "\(AppConfiguration.URLs.wisdomBook)/api/users" }
     
     // MARK: - Models
     

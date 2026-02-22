@@ -29,7 +29,7 @@ final class VideoGenerator {
             content: entry.content,
             contentType: entry.category.rawValue.lowercased(),
             nodeTitle: sanitizeTitle(entry.title),
-            source: entry.reference ?? "wisdombook.life",
+            source: entry.reference ?? AppConfiguration.URLs.wisdomBookDomain,
             pubDate: entry.pubDate
         )
         

@@ -1,5 +1,7 @@
 I would like the following statement to be the very first post issued by Social Marketer. On the social media platforms that can accept its entire text it can be posted as text. On the others it can be posted as an image or video (we can discus the vid creation process later).
 
+> **Implementation Note:** This content is now centralized in `ContentConstants.introText` (and `ContentConstants.shortDescription` for abbreviated versions). Update the constant in `Services/ContentConstants.swift` rather than editing inline in multiple files.
+
 ## Introductory Post
 
 Since the creation of Twitter in 2006 I have been posting the Wisdom that The Spirit of Christ has graciously given to me.

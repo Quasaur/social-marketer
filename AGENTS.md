@@ -38,6 +38,8 @@ This file provides context for AI assistants and developers working on the Socia
 | `SocialEffectsProcessManager` | Manages Social Effects server lifecycle | `SocialEffectsProcessManager.swift` |
 | `ConnectionHealthService` | Monitors external APIs and local services | `ConnectionHealthService.swift` |
 | `PlatformRouter` | Routes posts to appropriate connectors | `PlatformRouter.swift` |
+| `ContentConstants` | Centralized content strings (intro text, descriptions) | `ContentConstants.swift` |
+| `AppConfiguration` | Centralized configuration (URLs, timeouts, paths) | `Configuration.swift` |
 
 ### Data Flow
 
@@ -100,6 +102,37 @@ let videoURL = try await videoGen.generateVideo(entry: entry)
 let result = try await connector.postVideo(videoURL, caption: caption)
 ```
 
+### Content Constants
+
+Centralized content strings for consistency across the app:
+
+```swift
+// Use ContentConstants for shared text content
+let introText = ContentConstants.introText        // Multi-paragraph intro
+let shortDesc = ContentConstants.shortDescription // Short version
+```
+
+**Benefits:**
+- Single source of truth for content that appears in multiple places
+- Easier to update when content changes
+- Ensures consistency across test posts, seeds, etc.
+
+### Graphics Drawing Helpers
+
+The `QuoteGraphicGenerator` includes shared drawing utilities:
+
+```swift
+// Use fillCircle() helper instead of inline NSBezierPath(ovalIn:).fill()
+fillCircle(at: centerPoint, diameter: 12.0)
+```
+
+**Files using this pattern:**
+- `QuoteGraphicGenerator+BordersArtDeco.swift`
+- `QuoteGraphicGenerator+BordersClassic.swift`
+- `QuoteGraphicGenerator+BordersVictorian.swift`
+- `QuoteGraphicGenerator+BordersSacredCeltic.swift`
+- `QuoteGraphicGenerator+BordersHeraldic.swift`
+
 ### Error Handling
 
 Always log to ErrorLog for dashboard visibility:
@@ -136,12 +169,34 @@ ErrorLog.shared.log(
 - Test videos with names like `thought-Test_*.mp4` or `thought-Debug_*.mp4` should be ignored
 - If a test video is accidentally found in `video/api/`, it should be moved to `video/test/` immediately
 
-## Configuration Files
+## Configuration
 
-- **No build-time config** - All settings are runtime configurable
-- Platform credentials stored in **macOS Keychain**
-- Schedule settings in **UserDefaults**
-- Core Data for posts, logs, and cached content
+### AppConfiguration (NEW)
+
+All configuration values are centralized in `AppConfiguration` enum:
+
+```swift
+// URLs
+let url = AppConfiguration.URLs.wisdomBook
+let timeout = AppConfiguration.Timeouts.videoGeneration
+
+// Paths (configurable via UserDefaults)
+let binaryPath = AppConfiguration.Paths.socialEffectsBinary
+let videoPath = AppConfiguration.Paths.videoStorage
+```
+
+**Benefits:**
+- Single source of truth for all configuration
+- Machine-agnostic paths (uses `NSUserName()` for home directory)
+- Runtime configurable via UserDefaults
+- Type-safe with comprehensive documentation
+
+### Storage
+
+- Platform credentials → **macOS Keychain**
+- Schedule settings → **UserDefaults**
+- Configuration overrides → **UserDefaults** (optional)
+- Core Data → posts, logs, and cached content
 
 ## Testing
 
@@ -185,6 +240,7 @@ Dashboard's External Connections panel shows:
 ## Code Style
 
 - Use `@MainActor` for UI-updating services
+- **DRY Principle**: Consolidate duplicated code into shared helpers (e.g., `fillCircle()`, `ContentConstants`)
 - Prefer `async/await` over completion handlers
 - Log all errors to `ErrorLog.shared`
 - Use SwiftUI's `@Published` for observable state

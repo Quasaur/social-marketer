@@ -16,20 +16,24 @@ class SocialEffectsService {
     static let shared = SocialEffectsService()
     
     private let processManager = SocialEffectsProcessManager.shared
-    private let baseURL = "http://localhost:5390"
-    private let timeout: TimeInterval = 300 // 5 minutes for video generation
+    
+    /// Base URL for Social Effects API (configurable via AppConfiguration)
+    private var baseURL: String { AppConfiguration.URLs.socialEffects }
+    
+    /// Timeout for video generation requests
+    private var timeout: TimeInterval { AppConfiguration.Timeouts.videoGeneration }
     
     /// Dedicated URLSession with extended timeout for video generation
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = timeout
-        config.timeoutIntervalForResource = timeout  // 5 minutes total
+        config.timeoutIntervalForResource = timeout
         config.waitsForConnectivity = true
         return URLSession(configuration: config)
     }()
     
-    /// Maximum time to wait for video generation (8 minutes)
-    private let generationTimeout: TimeInterval = 480
+    /// Maximum time to wait for video generation (from Configuration)
+    private var generationTimeout: TimeInterval { AppConfiguration.Timeouts.videoGeneration }
     
     private init() {}
     
@@ -144,7 +148,7 @@ class SocialEffectsService {
         request.setValue("\(jsonData.count)", forHTTPHeaderField: "Content-Length")
         
         // Retry logic for transient network errors
-        let maxRetries = 2
+        let maxRetries = AppConfiguration.Limits.maxVideoRetries
         var lastError: Error?
         
         for attempt in 1...maxRetries {

@@ -38,6 +38,7 @@ SocialMarketer/
 ├── Services/
 │   ├── RSSParser.swift            # RSS feed parsing
 │   ├── QuoteGraphicGenerator.swift # Image generation
+│   ├── ContentConstants.swift     # Centralized content strings
 │   ├── PlatformRouter.swift       # Content distribution
 │   ├── PostScheduler.swift        # Scheduling logic
 │   ├── KeychainService.swift      # Credential storage

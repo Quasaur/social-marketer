@@ -17,7 +17,7 @@ final class QuoteGraphicGenerator {
     let backgroundColor = NSColor.black
     let textColor = NSColor.white
     let goldColor = NSColor(red: 212/255, green: 175/255, blue: 55/255, alpha: 1.0)
-    let watermarkText = "wisdombook.life"
+    let watermarkText = AppConfiguration.URLs.wisdomBookDomain
     
     // MARK: - Public Methods
     

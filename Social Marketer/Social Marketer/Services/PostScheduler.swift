@@ -47,8 +47,8 @@ final class PostScheduler {
     
     // MARK: - Video Discovery
     
-    /// Directory where Social Effects saves generated videos
-    private let videoStorageDir = "/Volumes/My Passport/social-media-content/social-effects/video/api/"
+    /// Directory where Social Effects saves generated videos (from Configuration)
+    private var videoStorageDir: String { AppConfiguration.Paths.videoStorage }
     
     /// Looks for an existing video file matching the given title
     /// - Parameter title: The wisdom entry title to match
@@ -232,7 +232,7 @@ final class PostScheduler {
         logger.notice("📢 Introductory post is due — posting to all platforms")
         
         let caption = introEntry.content ?? ""
-        let link = URL(string: "https://www.wisdombook.life")!
+        let link = URL(string: AppConfiguration.URLs.wisdomBook)!
         
         let enabledPlatforms = Platform.fetchEnabled(in: context)
         guard !enabledPlatforms.isEmpty else {
@@ -369,7 +369,7 @@ final class PostScheduler {
             image = NSImage(contentsOf: imageURL)
         }
         
-        let link = post.link ?? URL(string: "https://wisdombook.life")!
+        let link = post.link ?? URL(string: AppConfiguration.URLs.wisdomBook)!
         
         // Check if we need a video for this post (for YouTube or other video platforms)
         // First line of content is used as title for video matching

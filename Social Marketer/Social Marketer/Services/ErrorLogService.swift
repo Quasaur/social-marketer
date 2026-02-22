@@ -26,8 +26,8 @@ final class ErrorLog: ObservableObject {
     
     static let shared = ErrorLog()
     
-    /// Maximum entries retained in memory
-    static let maxEntries = 100
+    /// Maximum entries retained in memory (from Configuration)
+    static let maxEntries = AppConfiguration.Limits.maxErrorLogEntries
     
     @Published private(set) var entries: [ErrorEntry] = []
     

@@ -69,7 +69,7 @@ final class ConnectionHealthService: ObservableObject {
     /// All external endpoints grouped by category
     private static let endpoints: [(name: String, category: ConnectionResult.ConnectionCategory, url: String)] = [
         // Content Source
-        ("Wisdom Book",       .contentSource,   "https://www.wisdombook.life"),
+        ("Wisdom Book",       .contentSource,   AppConfiguration.URLs.wisdomBook),
         
         // Social Media
         ("X (Twitter)",       .socialMedia,      "https://api.twitter.com"),
@@ -152,7 +152,9 @@ final class ConnectionHealthService: ObservableObject {
     
     /// Create a ConnectionResult for Social Effects
     private func createSocialEffectsResult() -> ConnectionResult {
-        let url = URL(string: "http://localhost:5390")!
+        guard let url = URL(string: AppConfiguration.URLs.socialEffects) else {
+            fatalError("Invalid Social Effects URL in configuration")
+        }
         
         switch socialEffectsStatus {
         case .running:
@@ -213,7 +215,7 @@ final class ConnectionHealthService: ObservableObject {
         
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
-        request.timeoutInterval = 8
+        request.timeoutInterval = AppConfiguration.Timeouts.healthCheck
         
         let start = Date()
         

@@ -70,6 +70,7 @@ RSS Item → Content Model → Graphic Generation → Platform Distribution
 - Core Graphics text overlay
 - Dynamic sizing for platform requirements
 - Watermarked output
+- **Shared drawing helpers** (e.g., `fillCircle()`) for consistent rendering
 
 ## Data Flow
 

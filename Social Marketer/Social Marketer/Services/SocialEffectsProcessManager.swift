@@ -7,8 +7,23 @@ class SocialEffectsProcessManager {
     static let shared = SocialEffectsProcessManager()
     
     private var process: Process?
-    private let socialEffectsPath = "/Users/quasaur/Developer/social-effects"
-    private let serverPort: UInt16 = 5390
+    
+    /// Path to Social Effects installation (configurable via AppConfiguration)
+    private var socialEffectsPath: String {
+        let binaryPath = AppConfiguration.Paths.socialEffectsBinary
+        let nsPath = binaryPath as NSString
+        return (nsPath.deletingLastPathComponent as NSString).deletingLastPathComponent
+    }
+    
+    /// Server port (extracted from Configuration URL)
+    private var serverPort: UInt16 {
+        guard let url = URL(string: AppConfiguration.URLs.socialEffects),
+              let port = url.port else {
+            return 5390  // Default fallback
+        }
+        return UInt16(port)
+    }
+    
     private var isRunning = false
     
     private init() {}
@@ -29,7 +44,7 @@ class SocialEffectsProcessManager {
         }
         
         // Check if binary exists, fall back to swift run if not
-        let binaryPath = "\(socialEffectsPath)/.build/debug/SocialEffects"
+        let binaryPath = AppConfiguration.Paths.socialEffectsBinary
         let useBinary = FileManager.default.fileExists(atPath: binaryPath)
         
         let process = Process()
@@ -58,7 +73,8 @@ class SocialEffectsProcessManager {
         
         // Wait for server to start with progressive retry
         var healthy = false
-        for attempt in 1...10 {
+        let maxAttempts = Int(AppConfiguration.Timeouts.socialEffectsStartup / 0.5)
+        for attempt in 1...maxAttempts {
             try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             healthy = await checkHealth()
             if healthy { break }
@@ -92,7 +108,7 @@ class SocialEffectsProcessManager {
     /// Checks if the Social Effects server is healthy
     /// - Returns: True if server responds to health check
     func checkHealth() async -> Bool {
-        guard let url = URL(string: "http://localhost:\(serverPort)/health") else {
+        guard let url = URL(string: AppConfiguration.URLs.socialEffectsHealth) else {
             return false
         }
         
@@ -119,7 +135,7 @@ class SocialEffectsProcessManager {
         guard isRunning else { return }
         
         // Try graceful shutdown via API first
-        if let url = URL(string: "http://localhost:\(serverPort)/shutdown") {
+        if let url = URL(string: "\(AppConfiguration.URLs.socialEffects)/shutdown") {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             
@@ -139,7 +155,7 @@ class SocialEffectsProcessManager {
             process.terminate()
             
             // Wait for termination
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(AppConfiguration.Timeouts.shutdown * 1_000_000_000))
             
             if process.isRunning {
                 // Force kill using POSIX signal

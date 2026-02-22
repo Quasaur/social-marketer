@@ -132,6 +132,7 @@ YouTube requires these fields for public uploads:
 3. **Video Discovery** - Reuses existing videos instead of regenerating
 4. **Debug Mode Toggle** - All debug logging controlled by Settings toggle
 5. **Error Log Integration** - Detailed logging visible in Dashboard
+6. **Configuration Centralization** - All hardcoded values moved to `AppConfiguration`
 
 ### Technical Improvements
 
@@ -139,6 +140,10 @@ YouTube requires these fields for public uploads:
 - Added process liveness checking for Social Effects
 - Improved error handling with specific error messages
 - Added comprehensive debug logging (toggle-controlled)
+- **NEW:** Centralized configuration in `Configuration.swift`
+- **NEW:** Machine-agnostic paths (works on any Mac)
+- **NEW:** Configurable Social Effects location via UserDefaults
+- **NEW:** Type-safe configuration values with documentation
 
 ## File Locations
 

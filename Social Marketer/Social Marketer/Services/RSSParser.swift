@@ -37,9 +37,10 @@ actor RSSParser {
     // MARK: - Feed URLs
     
     static let feedURLs: [String: URL] = [
-        "daily": URL(string: "https://www.wisdombook.life/feed/daily.xml")!,
+        "daily": URL(string: AppConfiguration.Feeds.daily)!,
+        "thoughts": URL(string: AppConfiguration.Feeds.thoughts)!,
+        // Additional feeds (using direct URLs for now, can be added to Configuration if needed)
         "wisdom": URL(string: "https://www.wisdombook.life/feed/wisdom.xml")!,
-        "thoughts": URL(string: "https://www.wisdombook.life/feed/thoughts.xml")!,
         "quotes": URL(string: "https://www.wisdombook.life/feed/quotes.xml")!,
         "passages": URL(string: "https://www.wisdombook.life/feed/passages.xml")!
     ]
@@ -230,7 +231,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
             title: titleText,
             content: cleanContent,
             reference: reference,
-            link: URL(string: currentLink.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: "https://wisdombook.life")!,
+            link: URL(string: currentLink.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: AppConfiguration.URLs.wisdomBook)!,
             pubDate: pubDate,
             category: category
         )

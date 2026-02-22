@@ -9,6 +9,10 @@
 - [x] **Social Effects Integration**: API documentation complete
 - [x] **Memory Bank**: Documentation structure established
 
+### Code Optimizations (February 21, 2026) ✅
+- [x] **ContentConstants**: Centralized intro text (`introText`, `shortDescription`)
+- [x] **Drawing Helpers**: Consolidated `fillCircle()` function across border styles
+
 ### Assets Ready
 - [x] **Border Templates**: 10 PNG templates in Resources/Borders/
 - [x] **App Icons**: AppIcon set created
@@ -101,4 +105,4 @@
 - **Apple Developer account** needed for code signing
 
 ---
-*Last Updated*: February 19, 2026
+*Last Updated*: February 21, 2026

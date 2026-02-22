@@ -1,7 +1,22 @@
 # Active Context: Social Marketer
 
 ## Current Status
-🟡 **In Development** - Core infrastructure being built
+🟢 **Active Development** - Core infrastructure built, optimizing and refining
+
+## Recent Optimizations (February 21, 2026)
+
+### Code Consolidation
+- **ContentConstants**: Centralized intro text that was duplicated across 4 locations:
+  - `SocialMarketerApp.swift` (seed post)
+  - `PlatformSettingsView+TestPosts.swift` (LinkedIn, Facebook tests)
+  - `PlatformSettingsView+TestPostsPinterestYouTube.swift` (Pinterest test)
+  
+- **fillCircle Helper**: Consolidated `NSBezierPath(ovalIn:).fill()` operations across 5 border style files:
+  - `QuoteGraphicGenerator+BordersArtDeco.swift`
+  - `QuoteGraphicGenerator+BordersClassic.swift`
+  - `QuoteGraphicGenerator+BordersVictorian.swift`
+  - `QuoteGraphicGenerator+BordersSacredCeltic.swift`
+  - `QuoteGraphicGenerator+BordersHeraldic.swift`
 
 ## Recent Changes
 

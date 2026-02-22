@@ -40,8 +40,8 @@ final class PersistenceController {
     let container: NSPersistentContainer
     private let logger = Log.persistence
     
-    /// App Group identifier for shared container
-    private static let appGroupIdentifier = "group.com.wisdombook.SocialMarketer"
+    /// App Group identifier for shared container (from Configuration)
+    private static let appGroupIdentifier = AppConfiguration.Paths.appGroupIdentifier
     
     // MARK: - Initialization
     

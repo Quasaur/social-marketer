@@ -155,7 +155,7 @@ final class InstagramConnector: VideoPlatformConnector {
         // Upload to Facebook Page as an unpublished photo to get a CDN URL.
         let publicImageURL = try await uploadImageToFacebookCDN(imageData: imageData, token: token)
         
-        let igCaption = "\(caption)\n\n📖 Read more at wisdombook.life (link in bio)"
+        let igCaption = "\(caption)\n\n📖 Read more at \(AppConfiguration.URLs.wisdomBookDomain) (link in bio)"
         
         // Step 1: Create container with public image URL
         let containerID = try await createMediaContainer(
@@ -196,7 +196,7 @@ final class InstagramConnector: VideoPlatformConnector {
         // We'll upload to Facebook Page as unpublished video to get a URL.
         let publicVideoURL = try await uploadVideoToFacebook(videoURL: videoURL, token: token)
         
-        let igCaption = "\(caption)\n\n📖 Read more at wisdombook.life (link in bio)"
+        let igCaption = "\(caption)\n\n📖 Read more at \(AppConfiguration.URLs.wisdomBookDomain) (link in bio)"
         
         // 2. Create Media Container (REELS)
         let containerID = try await createReelsContainer(
