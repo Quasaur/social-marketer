@@ -36,17 +36,34 @@ Legend: ✅ Working | 🔲 Not tested | ❌ Not working
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Social Marketer                           │
-│                   (macOS SwiftUI App)                        │
-├─────────────────────────────────────────────────────────────┤
-│  Dashboard → Queue → PostScheduler → PlatformRouter          │
-│                       ↓                                      │
-│              VideoGenerator → Social Effects                 │
-│                       ↓                                      │
-│              Platform Connectors → YouTube API               │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Social Marketer                                   │
+│                   (macOS SwiftUI App)                                │
+├─────────────────────────────────────────────────────────────────────┤
+│  Dashboard → Queue → PostScheduler → PlatformRouter                  │
+│                                              ↓                       │
+│              SocialEffectsService (HTTP client)                      │
+│                                              ↓                       │
+│              VideoGenerator → Social Effects API (localhost:5390)    │
+│                                              ↓                       │
+│              Platform Connectors → YouTube API                       │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+### Social Effects Server Lifecycle
+
+Social Effects now runs as a **persistent background service**:
+
+| Phase | Trigger | Action |
+|-------|---------|--------|
+| **Start** | App Launch (`init()`) | `SocialEffectsService.ensureServerRunning()` starts the API server |
+| **Run** | During app lifetime | Server stays running on port 5390, handles all video generation |
+| **Stop** | App Quit (`applicationWillTerminate`) | Graceful shutdown via `SocialEffectsService.shutdown()` |
+
+**Benefits:**
+- Faster video generation (no server startup per video)
+- Reduced resource overhead (single server instance)
+- Cleaner architecture (lifecycle managed at app level)
 
 ## Key Components
 

@@ -21,6 +21,13 @@ class SocialEffectsProcessManager {
             return await checkHealth()
         }
         
+        // Check if a server is already running on the port (from a previous launch)
+        if await checkHealth() {
+            print("✅ Social Effects server already running on port \(serverPort)")
+            isRunning = true
+            return true
+        }
+        
         // Check if binary exists, fall back to swift run if not
         let binaryPath = "\(socialEffectsPath)/.build/debug/SocialEffects"
         let useBinary = FileManager.default.fileExists(atPath: binaryPath)

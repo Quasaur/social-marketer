@@ -63,6 +63,7 @@ extension Platform {
     @NSManaged public var isEnabled: Bool
     @NSManaged public var lastPostDate: Date?
     @NSManaged public var createdAt: Date?
+    @NSManaged public var preferredMediaType: String?
     @NSManaged public var posts: NSSet?
 }
 

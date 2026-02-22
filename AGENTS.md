@@ -34,7 +34,7 @@ This file provides context for AI assistants and developers working on the Socia
 | Service | Purpose | File |
 |---------|---------|------|
 | `PostScheduler` | Orchestrates posting, manages launchd, queue processing | `PostScheduler.swift` |
-| `VideoGenerator` | Interface to Social Effects for video creation | `VideoGenerator.swift` |
+| `SocialEffectsService` | Interface to Social Effects for video creation | `SocialEffectsService.swift` |
 | `SocialEffectsProcessManager` | Manages Social Effects server lifecycle | `SocialEffectsProcessManager.swift` |
 | `ConnectionHealthService` | Monitors external APIs and local services | `ConnectionHealthService.swift` |
 | `PlatformRouter` | Routes posts to appropriate connectors | `PlatformRouter.swift` |
@@ -45,6 +45,35 @@ This file provides context for AI assistants and developers working on the Socia
 2. **Video Generation**: WisdomEntry → Social Effects → MP4 file
 3. **Posting**: Post + Video → PlatformRouter → Connector APIs
 4. **Logging**: All operations → ErrorLog + PostLog
+
+### Social Effects Server Lifecycle
+
+Social Effects runs as a **persistent background service** while Social Marketer is open:
+
+```
+App Launch (SocialMarketerApp.init)
+    ↓
+startSocialEffectsService() → SocialEffectsService.ensureServerRunning()
+    ↓
+Social Effects API Server starts on port 5390 (if not already running)
+    ↓
+[Server runs continuously...]
+    ↓
+Video Generation Requests (via HTTP POST /generate)
+    ↓
+[App continues running...]
+    ↓
+User Quits App → SocialMarketerAppDelegate.applicationWillTerminate()
+    ↓
+Graceful shutdown of Social Effects server
+```
+
+**Key Points:**
+- Server is started once on app launch (in `init()`)
+- Server stays running for all video generation requests
+- Server is gracefully shut down when app terminates (via `AppDelegate`)
+- `SocialEffectsService.ensureServerRunning()` is idempotent - safe to call multiple times
+- Each video generation request reuses the same running server instance
 
 ## Development Guidelines
 

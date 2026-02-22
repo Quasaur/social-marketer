@@ -7,8 +7,32 @@
 
 import SwiftUI
 
+/// AppDelegate for handling application lifecycle events
+/// Specifically for graceful shutdown of Social Effects service
+class SocialMarketerAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillTerminate(_ notification: Notification) {
+        Log.app.notice("🛑 Social Marketer shutting down - stopping Social Effects service...")
+        
+        // Synchronously shut down Social Effects before app terminates
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            await SocialEffectsService.shared.shutdown()
+            semaphore.signal()
+        }
+        
+        // Wait up to 5 seconds for graceful shutdown
+        let result = semaphore.wait(timeout: .now() + 5)
+        if result == .timedOut {
+            Log.app.warning("⚠️ Social Effects shutdown timed out")
+        } else {
+            Log.app.notice("✅ Social Effects service stopped")
+        }
+    }
+}
+
 @main
 struct SocialMarketerApp: App {
+    @NSApplicationDelegateAdaptor(SocialMarketerAppDelegate.self) var appDelegate
     let persistenceController = PersistenceController.shared
     
     var body: some Scene {
@@ -60,42 +84,28 @@ struct SocialMarketerApp: App {
     }
     
     /// Start Social Effects service in background
-    /// Video generation requires this local service to be running
+    /// Video generation requires this local service to be running continuously
+    /// Server lifecycle: started on app launch → runs persistently → stopped on app quit
     private func startSocialEffectsService() {
         Task {
-            Log.app.notice("🚀 Starting Social Effects service...")
-            let manager = SocialEffectsProcessManager.shared
+            Log.app.notice("🚀 Ensuring Social Effects service is running...")
             
-            // Check if already running
-            if await manager.serverIsRunning {
-                Log.app.notice("✅ Social Effects already running")
-                return
-            }
+            // Use the service's ensure method which is idempotent
+            let running = await SocialEffectsService.shared.ensureServerRunning()
             
-            // Start the service
-            do {
-                let started = try await manager.startServer()
-                if started {
-                    Log.app.notice("✅ Social Effects service started successfully")
-                    ErrorLog.shared.log(
-                        category: "App",
-                        message: "Social Effects service started",
-                        detail: "Video generation ready on port 5390"
-                    )
-                } else {
-                    Log.app.error("❌ Failed to start Social Effects service")
-                    ErrorLog.shared.log(
-                        category: "App",
-                        message: "Social Effects failed to start",
-                        detail: "Video generation will not be available. Check that the binary exists at /Users/quasaur/Developer/social-effects/.build/debug/SocialEffects"
-                    )
-                }
-            } catch {
-                Log.app.error("❌ Error starting Social Effects: \(error.localizedDescription)")
+            if running {
+                Log.app.notice("✅ Social Effects service ready (port 5390)")
                 ErrorLog.shared.log(
                     category: "App",
-                    message: "Social Effects startup error",
-                    detail: error.localizedDescription
+                    message: "Social Effects service active",
+                    detail: "Video generation ready on port 5390"
+                )
+            } else {
+                Log.app.error("❌ Failed to start Social Effects service")
+                ErrorLog.shared.log(
+                    category: "App",
+                    message: "Social Effects failed to start",
+                    detail: "Video generation will not be available. Check that the binary exists at /Users/quasaur/Developer/social-effects/.build/debug/SocialEffects"
                 )
             }
         }

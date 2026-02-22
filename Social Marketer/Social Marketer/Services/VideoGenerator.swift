@@ -9,7 +9,8 @@
 import Foundation
 
 /// Generates videos using the SocialEffects HTTP API.
-/// Handles complete lifecycle: start server → generate video → shutdown server.
+/// Server lifecycle is managed at app level (started on launch, stopped on quit).
+/// This class simply uses the running server for video generation requests.
 @MainActor
 final class VideoGenerator {
     
@@ -54,38 +55,12 @@ final class VideoGenerator {
         }
     }
     
-    /// Alternative method: Manual lifecycle control
-    /// Use this if you need to generate multiple videos in a batch
+    /// Legacy method - now behaves the same as generateVideo
+    /// Server lifecycle is managed at app level, not per-generation
     func generateVideoWithManualLifecycle(entry: WisdomEntry) async throws -> URL? {
-        logger.info("🎬 Starting batch video generation...")
-        
-        let rssItem = RSSItem(
-            title: entry.title,
-            content: entry.content,
-            contentType: entry.category.rawValue.lowercased(),
-            nodeTitle: sanitizeTitle(entry.title),
-            source: entry.reference ?? "wisdombook.life",
-            pubDate: entry.pubDate
-        )
-        
-        // Start server manually
-        let processManager = SocialEffectsProcessManager.shared
-        let started = try await processManager.startServer()
-        guard started else {
-            throw VideoGenerationError.serverUnavailable
-        }
-        
-        defer {
-            // Ensure shutdown happens
-            Task {
-                await socialEffectsService.shutdown()
-            }
-        }
-        
-        // Generate video
-        let videoPath = try await socialEffectsService.generateVideo(from: rssItem)
-        
-        return URL(fileURLWithPath: videoPath)
+        logger.info("🎬 Video generation (using persistent server)...")
+        // Server stays running - same as generateVideo now
+        return try await generateVideo(entry: entry)
     }
     
     /// Get the next border style in the rotation

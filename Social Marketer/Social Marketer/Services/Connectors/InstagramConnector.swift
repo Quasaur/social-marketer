@@ -173,10 +173,13 @@ final class InstagramConnector: VideoPlatformConnector {
         
         logger.info("Instagram post published: \(mediaID)")
         
+        // Get the permalink (shortcode URL) for the post
+        let permalink = try? await fetchPermalink(mediaID: mediaID, token: token)
+        
         return PostResult(
             success: true,
             postID: mediaID,
-            postURL: URL(string: "https://instagram.com/p/\(mediaID)"),
+            postURL: permalink,
             error: nil
         )
     }
@@ -211,10 +214,13 @@ final class InstagramConnector: VideoPlatformConnector {
         
         logger.info("Instagram Reel published: \(mediaID)")
         
+        // Get the permalink (shortcode URL) for the reel
+        let permalink = try? await fetchPermalink(mediaID: mediaID, token: token)
+        
         return PostResult(
             success: true,
             postID: mediaID,
-            postURL: URL(string: "https://instagram.com/reel/\(mediaID)"),
+            postURL: permalink,
             error: nil
         )
     }
@@ -302,6 +308,7 @@ final class InstagramConnector: VideoPlatformConnector {
     }
     
     /// Upload video to Facebook Page as unpublished to get a public URL for Instagram
+    /// Uses resumable upload protocol for better reliability with larger files
     private func uploadVideoToFacebook(videoURL: URL, token: String) async throws -> String {
         let pageCreds: FacebookPageCredentials
         do {
@@ -310,6 +317,22 @@ final class InstagramConnector: VideoPlatformConnector {
             throw PlatformError.postFailed("Facebook Page not configured. Required for hosting video.")
         }
         
+        // Check file size
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: videoURL.path)
+        let fileSize = fileAttributes[.size] as? Int64 ?? 0
+        let fileSizeMB = Double(fileSize) / 1024 / 1024
+        logger.info("Uploading video to Facebook: \(String(format: "%.1f", fileSizeMB)) MB")
+        
+        // For files under 50MB, use simple upload; for larger files, use resumable upload
+        if fileSizeMB < 50 {
+            return try await uploadVideoSimple(videoURL: videoURL, pageCreds: pageCreds)
+        } else {
+            return try await uploadVideoResumable(videoURL: videoURL, fileSize: fileSize, pageCreds: pageCreds)
+        }
+    }
+    
+    /// Simple direct upload for smaller videos (< 50MB)
+    private func uploadVideoSimple(videoURL: URL, pageCreds: FacebookPageCredentials) async throws -> String {
         let videoData = try Data(contentsOf: videoURL)
         let url = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
         
@@ -354,6 +377,176 @@ final class InstagramConnector: VideoPlatformConnector {
         
         // Get Source URL
         let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(vidResp.id)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
+        let (sourceData, _) = try await URLSession.shared.data(from: sourceURL)
+        
+        struct VideoSourceResponse: Decodable {
+            let source: String
+        }
+        let sourceResp = try JSONDecoder().decode(VideoSourceResponse.self, from: sourceData)
+        return sourceResp.source
+    }
+    
+    /// Resumable upload for larger videos (>= 50MB)
+    /// Uses Facebook's resumable upload protocol with chunked transfer
+    private func uploadVideoResumable(videoURL: URL, fileSize: Int64, pageCreds: FacebookPageCredentials) async throws -> String {
+        logger.info("Using resumable upload for large video (\(fileSize / 1024 / 1024) MB)")
+        
+        // Step 1: Initialize upload session
+        let initURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+        
+        var initRequest = URLRequest(url: initURL)
+        initRequest.httpMethod = "POST"
+        initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let initBody: [String: Any] = [
+            "access_token": pageCreds.pageAccessToken,
+            "published": false,
+            "file_size": fileSize,
+            "upload_phase": "start"
+        ]
+        
+        initRequest.httpBody = try JSONSerialization.data(withJSONObject: initBody)
+        
+        let (initData, initResponse) = try await URLSession.shared.data(for: initRequest)
+        
+        guard let httpResponse = initResponse as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            let errorBody = String(data: initData, encoding: .utf8) ?? "Unknown error"
+            throw PlatformError.postFailed("Failed to initialize resumable upload: \(errorBody)")
+        }
+        
+        struct InitResponse: Decodable {
+            let upload_session_id: String?
+            let video_id: String?
+            let start_offset: String?
+            let end_offset: String?
+        }
+        
+        let initResp: InitResponse
+        do {
+            initResp = try JSONDecoder().decode(InitResponse.self, from: initData)
+        } catch {
+            let responseString = String(data: initData, encoding: .utf8) ?? "Unable to decode"
+            logger.error("Failed to decode init response: \(responseString)")
+            throw PlatformError.postFailed("Failed to parse upload init response: \(responseString)")
+        }
+        
+        guard let sessionID = initResp.upload_session_id,
+              let videoID = initResp.video_id else {
+            let responseString = String(data: initData, encoding: .utf8) ?? "Unable to decode"
+            logger.error("Missing session_id or video_id in response: \(responseString)")
+            throw PlatformError.postFailed("Invalid upload init response: \(responseString)")
+        }
+        
+        logger.info("Resumable upload initialized. Session: \(sessionID), Video ID: \(videoID)")
+        
+        // Step 2: Upload file in chunks (8MB chunks)
+        let chunkSize = 8 * 1024 * 1024 // 8MB
+        let fileHandle = try FileHandle(forReadingFrom: videoURL)
+        defer { fileHandle.closeFile() }
+        
+        var startOffset = Int(initResp.start_offset ?? "0") ?? 0
+        let endOffset = Int(initResp.end_offset ?? String(fileSize)) ?? Int(fileSize)
+        
+        while startOffset < endOffset {
+            let currentChunkSize = min(chunkSize, endOffset - startOffset)
+            fileHandle.seek(toFileOffset: UInt64(startOffset))
+            let chunkData = fileHandle.readData(ofLength: currentChunkSize)
+            
+            logger.info("Uploading chunk: \(startOffset) - \(startOffset + currentChunkSize)")
+            
+            // Upload chunk
+            let chunkURL = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+            
+            var chunkRequest = URLRequest(url: chunkURL)
+            chunkRequest.httpMethod = "POST"
+            
+            let boundary = UUID().uuidString
+            chunkRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            
+            var chunkBody = Data()
+            
+            // Access Token
+            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Disposition: form-data; name=\"access_token\"\r\n\r\n".data(using: .utf8)!)
+            chunkBody.append("\(pageCreds.pageAccessToken)\r\n".data(using: .utf8)!)
+            
+            // Upload phase
+            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Disposition: form-data; name=\"upload_phase\"\r\n\r\n".data(using: .utf8)!)
+            chunkBody.append("transfer\r\n".data(using: .utf8)!)
+            
+            // Session ID
+            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Disposition: form-data; name=\"upload_session_id\"\r\n\r\n".data(using: .utf8)!)
+            chunkBody.append("\(sessionID)\r\n".data(using: .utf8)!)
+            
+            // Start offset
+            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Disposition: form-data; name=\"start_offset\"\r\n\r\n".data(using: .utf8)!)
+            chunkBody.append("\(startOffset)\r\n".data(using: .utf8)!)
+            
+            // Video chunk
+            chunkBody.append("--\(boundary)\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Disposition: form-data; name=\"video_file_chunk\"; filename=\"chunk.bin\"\r\n".data(using: .utf8)!)
+            chunkBody.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            chunkBody.append(chunkData)
+            chunkBody.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+            
+            chunkRequest.httpBody = chunkBody
+            
+            let (chunkRespData, chunkResponse) = try await URLSession.shared.data(for: chunkRequest)
+            
+            guard let chunkHttpResp = chunkResponse as? HTTPURLResponse, chunkHttpResp.statusCode == 200 else {
+                let errorBody = String(data: chunkRespData, encoding: .utf8) ?? "Unknown error"
+                throw PlatformError.postFailed("Chunk upload failed: \(errorBody)")
+            }
+            
+            struct ChunkResponse: Decodable {
+                let start_offset: String?
+                let end_offset: String?
+            }
+            
+            let chunkResp = try JSONDecoder().decode(ChunkResponse.self, from: chunkRespData)
+            
+            if let nextOffset = chunkResp.start_offset {
+                startOffset = Int(nextOffset) ?? endOffset
+            } else {
+                break
+            }
+        }
+        
+        // Step 3: Finish upload
+        let finishURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+        
+        var finishRequest = URLRequest(url: finishURL)
+        finishRequest.httpMethod = "POST"
+        finishRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let finishBody: [String: Any] = [
+            "access_token": pageCreds.pageAccessToken,
+            "upload_phase": "finish",
+            "upload_session_id": sessionID
+        ]
+        
+        finishRequest.httpBody = try JSONSerialization.data(withJSONObject: finishBody)
+        
+        let (finishData, finishResponse) = try await URLSession.shared.data(for: finishRequest)
+        
+        guard let finishHttpResp = finishResponse as? HTTPURLResponse, finishHttpResp.statusCode == 200 else {
+            let errorBody = String(data: finishData, encoding: .utf8) ?? "Unknown error"
+            throw PlatformError.postFailed("Failed to finish upload: \(errorBody)")
+        }
+        
+        struct FinishResponse: Decodable {
+            let success: Bool?
+        }
+        
+        let _ = try JSONDecoder().decode(FinishResponse.self, from: finishData)
+        
+        logger.info("Resumable upload complete. Video ID: \(videoID)")
+        
+        // Get Source URL
+        let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(videoID)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
         let (sourceData, _) = try await URLSession.shared.data(from: sourceURL)
         
         struct VideoSourceResponse: Decodable {
@@ -477,5 +670,30 @@ final class InstagramConnector: VideoPlatformConnector {
         
         let statusResponse = try JSONDecoder().decode(StatusResponse.self, from: data)
         return statusResponse.status_code ?? "UNKNOWN"
+    }
+    
+    /// Fetch the permalink (shortcode URL) for a published media
+    private func fetchPermalink(mediaID: String, token: String) async throws -> URL? {
+        let url = URL(string: "https://graph.facebook.com/v24.0/\(mediaID)?fields=permalink&access_token=\(token)")!
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            logger.warning("Failed to fetch permalink for media \(mediaID)")
+            return nil
+        }
+        
+        struct PermalinkResponse: Decodable {
+            let permalink: String?
+        }
+        
+        let permalinkResponse = try JSONDecoder().decode(PermalinkResponse.self, from: data)
+        
+        if let permalink = permalinkResponse.permalink {
+            logger.info("Fetched permalink: \(permalink)")
+            return URL(string: permalink)
+        }
+        
+        return nil
     }
 }

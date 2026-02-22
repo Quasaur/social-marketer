@@ -10,7 +10,8 @@ enum SocialEffectsError: Error {
 }
 
 /// Service for generating videos via Social Effects API
-/// Manages the complete lifecycle: start server → generate video → shutdown server
+/// The server is started when Social Marketer launches and runs continuously
+/// until the app shuts down (see AppDelegate for shutdown handling)
 class SocialEffectsService {
     static let shared = SocialEffectsService()
     
@@ -18,38 +19,82 @@ class SocialEffectsService {
     private let baseURL = "http://localhost:5390"
     private let timeout: TimeInterval = 300 // 5 minutes for video generation
     
+    /// Dedicated URLSession with extended timeout for video generation
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout  // 5 minutes total
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
+    
+    /// Maximum time to wait for video generation (8 minutes)
+    private let generationTimeout: TimeInterval = 480
+    
     private init() {}
     
-    /// Executes the complete video generation workflow
+    /// Ensures the Social Effects server is running
+    /// Called on app launch to start the persistent service
+    /// - Returns: True if server is running (started or already running)
+    @discardableResult
+    func ensureServerRunning() async -> Bool {
+        if await processManager.serverIsRunning {
+            return true
+        }
+        
+        do {
+            return try await processManager.startServer()
+        } catch {
+            Log.app.error("Failed to start Social Effects: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
+    /// Generates a video using the running Social Effects server
     /// - Parameter rssItem: The RSS item to convert to video
     /// - Returns: Path to the generated video file
     /// - Throws: SocialEffectsError if any step fails
     func generateVideo(from rssItem: RSSItem) async throws -> String {
-        // Step 1: Start the server
-        let serverStarted = try await processManager.startServer()
-        guard serverStarted else {
+        // Ensure server is running (idempotent)
+        let serverRunning = await ensureServerRunning()
+        guard serverRunning else {
             throw SocialEffectsError.serverStartFailed
         }
         
-        // Step 2: Verify health
-        let healthy = await processManager.checkHealth()
-        guard healthy else {
-            throw SocialEffectsError.serverNotRunning
+        // Generate video with timeout
+        return try await withTimeout(seconds: generationTimeout) {
+            try await self.sendGenerationRequest(
+                title: rssItem.title,
+                content: rssItem.content,
+                contentType: rssItem.contentType,
+                nodeTitle: rssItem.nodeTitle
+            )
         }
-        
-        // Step 3: Generate video
-        let videoPath = try await sendGenerationRequest(
-            title: rssItem.title,
-            content: rssItem.content,
-            contentType: rssItem.contentType,
-            nodeTitle: rssItem.nodeTitle
-        )
-        
-        return videoPath
+    }
+    
+    /// Execute a task with a timeout
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            // Add the actual work
+            group.addTask {
+                try await operation()
+            }
+            
+            // Add the timeout
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw SocialEffectsError.generationFailed("Video generation timed out after \(Int(seconds)) seconds")
+            }
+            
+            // Return the first result or throw
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
     }
     
     /// Shuts down the Social Effects server
-    /// Call this after video generation is complete
+    /// Called when Social Marketer is shutting down
     func shutdown() async {
         await processManager.shutdownServer()
     }
@@ -75,64 +120,78 @@ class SocialEffectsService {
             "content": content,
             "content_type": contentType,
             "node_title": nodeTitle,
-            "ping_pong": false
+            "ping_pong": true
         ]
         
-        // Debug logging (when Debug Mode enabled)
-        if Log.isDebugMode {
-            Log.debug("Request body dict: \(body)", category: "SocialEffects")
-        }
+        // Always log the request for debugging
+        print("[SocialEffects] Request body dict: \(body)")
         
         let jsonData: Data
         do {
             jsonData = try JSONSerialization.data(withJSONObject: body)
-            if Log.isDebugMode {
-                Log.debug("JSON data size: \(jsonData.count) bytes", category: "SocialEffects")
-            }
+            print("[SocialEffects] JSON data size: \(jsonData.count) bytes")
         } catch {
-            Log.debug("JSON serialization failed: \(error)", category: "SocialEffects")
+            print("[SocialEffects] JSON serialization failed: \(error)")
             throw SocialEffectsError.generationFailed("JSON serialization failed: \(error.localizedDescription)")
         }
         
-        // Debug: Log the JSON being sent (when Debug Mode enabled)
-        if Log.isDebugMode, let jsonString = String(data: jsonData, encoding: .utf8) {
-            Log.debug("Sending JSON: \(jsonString)", category: "SocialEffects")
+        // Log the JSON being sent
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("[SocialEffects] Sending JSON: \(jsonString)")
         }
         
         request.httpBody = jsonData
         request.setValue("\(jsonData.count)", forHTTPHeaderField: "Content-Length")
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Retry logic for transient network errors
+        let maxRetries = 2
+        var lastError: Error?
         
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SocialEffectsError.invalidResponse
+        for attempt in 1...maxRetries {
+            do {
+                let (data, response) = try await session.data(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw SocialEffectsError.invalidResponse
+                }
+                
+                guard httpResponse.statusCode == 200 else {
+                    let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw SocialEffectsError.generationFailed("HTTP \(httpResponse.statusCode): \(errorBody)")
+                }
+                
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    throw SocialEffectsError.invalidResponse
+                }
+                
+                guard let success = json["success"] as? Bool, success == true else {
+                    let errorMessage = json["error"] as? String ?? "Unknown error"
+                    throw SocialEffectsError.generationFailed(errorMessage)
+                }
+                
+                guard let videoPath = json["video_path"] as? String else {
+                    throw SocialEffectsError.invalidResponse
+                }
+                
+                if Log.isDebugMode {
+                    Log.debug("Video generated: \(videoPath)", category: "SocialEffects")
+                }
+                return videoPath
+                
+            } catch {
+                lastError = error
+                if attempt < maxRetries {
+                    print("⚠️ Video generation attempt \(attempt) failed: \(error.localizedDescription). Retrying...")
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000) // 2s, 4s backoff
+                }
+            }
         }
         
-        guard httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw SocialEffectsError.generationFailed("HTTP \(httpResponse.statusCode): \(errorBody)")
-        }
-        
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw SocialEffectsError.invalidResponse
-        }
-        
-        guard let success = json["success"] as? Bool, success == true else {
-            let errorMessage = json["error"] as? String ?? "Unknown error"
-            throw SocialEffectsError.generationFailed(errorMessage)
-        }
-        
-        guard let videoPath = json["video_path"] as? String else {
-            throw SocialEffectsError.invalidResponse
-        }
-        
-        if Log.isDebugMode {
-            Log.debug("Video generated: \(videoPath)", category: "SocialEffects")
-        }
-        return videoPath
+        throw lastError ?? SocialEffectsError.generationFailed("All retry attempts failed")
     }
     
-    /// Executes the full workflow and automatically shuts down server
+    /// Legacy method - now just calls generateVideo
+    /// Server lifecycle is managed at app level, not per-video
     /// - Parameter rssItem: The RSS item to convert
     /// - Returns: Path to generated video
     func executeFullWorkflow(from rssItem: RSSItem) async throws -> String {
@@ -140,13 +199,7 @@ class SocialEffectsService {
             Log.debug("executeFullWorkflow called - title: \(rssItem.title), contentType: \(rssItem.contentType)", category: "SocialEffects")
         }
         
-        defer {
-            // Ensure server is always shut down, even on error
-            Task {
-                await shutdown()
-            }
-        }
-        
+        // Server stays running - shutdown is handled at app termination
         return try await generateVideo(from: rssItem)
     }
 }

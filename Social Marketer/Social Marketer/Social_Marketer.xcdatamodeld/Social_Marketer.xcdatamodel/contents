@@ -7,6 +7,7 @@
         <attribute name="isEnabled" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastPostDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="preferredMediaType" optional="YES" attributeType="String" defaultValueString="video"/>
         <relationship name="posts" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="PostLog" inverseName="platform" inverseEntity="PostLog"/>
     </entity>
     <entity name="Post" representedClassName="Post" syncable="YES">
