@@ -8,7 +8,7 @@
 import CoreData
 
 /// Manages the Core Data stack with App Group support
-final class PersistenceController {
+final class PersistenceController: PersistenceServiceProtocol {
     
     // MARK: - Singleton
     

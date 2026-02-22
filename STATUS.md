@@ -133,6 +133,7 @@ YouTube requires these fields for public uploads:
 4. **Debug Mode Toggle** - All debug logging controlled by Settings toggle
 5. **Error Log Integration** - Detailed logging visible in Dashboard
 6. **Configuration Centralization** - All hardcoded values moved to `AppConfiguration`
+7. **Dependency Injection Framework** - Protocol-based service abstraction layer
 
 ### Technical Improvements
 
@@ -144,6 +145,9 @@ YouTube requires these fields for public uploads:
 - **NEW:** Machine-agnostic paths (works on any Mac)
 - **NEW:** Configurable Social Effects location via UserDefaults
 - **NEW:** Type-safe configuration values with documentation
+- **NEW:** Service protocols for testability (`ServiceProtocols.swift`)
+- **NEW:** DI container with SwiftUI environment injection (`ServiceContainer.swift`)
+- **NEW:** All major services now conform to protocols (8 services)
 
 ## File Locations
 

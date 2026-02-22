@@ -9,7 +9,7 @@ import Foundation
 import CoreData
 
 /// Service for managing wisdom content from RSS feeds
-actor ContentService {
+actor ContentService: ContentServiceProtocol {
     
     // MARK: - Singleton
     

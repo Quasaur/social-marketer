@@ -13,7 +13,7 @@ import Network // Added Network import
 
 /// Manages OAuth 2.0 authentication flows for all platforms
 @MainActor
-final class OAuthManager: NSObject, ObservableObject {
+final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
     
     // MARK: - Singleton
     

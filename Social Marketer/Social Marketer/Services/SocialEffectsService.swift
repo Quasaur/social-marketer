@@ -12,7 +12,7 @@ enum SocialEffectsError: Error {
 /// Service for generating videos via Social Effects API
 /// The server is started when Social Marketer launches and runs continuously
 /// until the app shuts down (see AppDelegate for shutdown handling)
-class SocialEffectsService {
+class SocialEffectsService: SocialEffectsServiceProtocol {
     static let shared = SocialEffectsService()
     
     private let processManager = SocialEffectsProcessManager.shared

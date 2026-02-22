@@ -22,7 +22,7 @@ struct ErrorEntry: Identifiable, Hashable {
 ///
 /// Usage:  `ErrorLog.shared.log(category: "RSS", message: "Feed fetch failed", detail: error.localizedDescription)`
 @MainActor
-final class ErrorLog: ObservableObject {
+final class ErrorLog: ObservableObject, ErrorLogServiceProtocol {
     
     static let shared = ErrorLog()
     

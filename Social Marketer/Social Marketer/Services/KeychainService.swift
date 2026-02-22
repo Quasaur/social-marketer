@@ -9,7 +9,7 @@ import Foundation
 import Security
 
 /// Service for storing and retrieving platform credentials from Keychain
-final class KeychainService {
+final class KeychainService: KeychainServiceProtocol {
     
     // MARK: - Singleton
     

@@ -18,7 +18,7 @@ struct TestPostResult {
 
 /// Manages test posting across all platforms with unified state handling
 @MainActor
-class TestPostManager: ObservableObject {
+class TestPostManager: ObservableObject, TestPostServiceProtocol {
     
     static let shared = TestPostManager()
     
