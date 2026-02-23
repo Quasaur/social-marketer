@@ -11,32 +11,29 @@ extension PlatformSettingsView {
     
     @MainActor
     func testInstagramPost() async {
-        instagramTesting = true
-        defer {
-            Task { @MainActor in
-                instagramTesting = false
-            }
-        }
-        
-        ErrorLog.shared.log(
-            category: "Instagram",
-            message: "Test Post started",
-            detail: "Checking for queued content or RSS feed..."
-        )
-        
-        do {
+        await testManager.performTest(platform: "instagram") {
+            ErrorLog.shared.log(
+                category: "Instagram",
+                message: "Test Post started",
+                detail: "Checking for queued content or RSS feed..."
+            )
+            
             let connector = InstagramConnector()
             guard await connector.isConfigured else {
-                errorMessage = "Instagram not configured. Try disconnecting and reconnecting."
-                showingError = true
-                return
+                return TestPostResult(
+                    success: false,
+                    message: "Instagram not configured. Try disconnecting and reconnecting.",
+                    postURL: nil
+                )
             }
             
             let context = PersistenceController.shared.viewContext
             guard let instagramPlatform = Platform.find(name: "Instagram", in: context) else {
-                errorMessage = "Instagram platform not found in database."
-                showingError = true
-                return
+                return TestPostResult(
+                    success: false,
+                    message: "Instagram platform not found in database.",
+                    postURL: nil
+                )
             }
             
             let (title, content, link): (String, String, URL)
@@ -53,10 +50,12 @@ extension PlatformSettingsView {
             } else {
                 let rssParser = RSSParser()
                 guard let entry = try await rssParser.fetchDaily() else {
-                    errorMessage = "No posts in queue and RSS feed unavailable."
                     ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: "No content available")
-                    showingError = true
-                    return
+                    return TestPostResult(
+                        success: false,
+                        message: "No posts in queue and RSS feed unavailable.",
+                        postURL: nil
+                    )
                 }
                 title = entry.title
                 content = entry.content
@@ -77,20 +76,14 @@ extension PlatformSettingsView {
                 if let existingVideoURL = await findExistingVideo(for: title) {
                     ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Using existing video: \(existingVideoURL.lastPathComponent)")
                     result = try await connector.postVideo(existingVideoURL, caption: caption)
-                    
-                    if result.success {
-                        successMessage = "Posted EXISTING VIDEO to Instagram! 🎉\n\(result.postURL?.absoluteString ?? "")"
-                        showingSuccess = true
-                    } else {
-                        errorMessage = result.error?.localizedDescription ?? "Unknown error"
-                        showingError = true
-                    }
-                    return
+                    return TestPostResult(
+                        success: result.success,
+                        message: result.success ? "Posted EXISTING VIDEO to Instagram! 🎉" : (result.error?.localizedDescription ?? "Unknown error"),
+                        postURL: result.postURL
+                    )
                 }
                 
                 ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Generating new video for: \(title)")
-                successMessage = "Generating video... This may take 2-3 minutes."
-                showingSuccess = true
                 
                 let videoGen = VideoGenerator()
                 let entry = WisdomEntry(
@@ -117,21 +110,19 @@ extension PlatformSettingsView {
                         category: .thought
                     )
                     guard let image = generator.generate(from: fallbackEntry) else {
-                        errorMessage = "Could not generate image for Instagram post."
-                        showingError = true
-                        return
+                        return TestPostResult(
+                            success: false,
+                            message: "Could not generate image for Instagram post.",
+                            postURL: nil
+                        )
                     }
                     
                     result = try await connector.post(image: image, caption: caption, link: link)
-                    
-                    if result.success {
-                        successMessage = "Posted IMAGE to Instagram (video generation failed). 🎉\n\(result.postURL?.absoluteString ?? "")"
-                        showingSuccess = true
-                    } else {
-                        errorMessage = result.error?.localizedDescription ?? "Unknown error"
-                        showingError = true
-                    }
-                    return
+                    return TestPostResult(
+                        success: result.success,
+                        message: result.success ? "Posted IMAGE to Instagram (video generation failed). 🎉" : (result.error?.localizedDescription ?? "Unknown error"),
+                        postURL: result.postURL
+                    )
                 }
                 
                 result = try await connector.postVideo(videoURL, caption: caption)
@@ -149,41 +140,21 @@ extension PlatformSettingsView {
                     category: .thought
                 )
                 guard let image = generator.generate(from: imageEntry) else {
-                    errorMessage = "Could not generate image for Instagram post."
-                    showingError = true
-                    return
+                    return TestPostResult(
+                        success: false,
+                        message: "Could not generate image for Instagram post.",
+                        postURL: nil
+                    )
                 }
                 
                 result = try await connector.post(image: image, caption: caption, link: link)
             }
             
-            if result.success {
-                successMessage = "Posted to Instagram! 🎉\n\(result.postURL?.absoluteString ?? "")"
-                showingSuccess = true
-            } else {
-                errorMessage = result.error?.localizedDescription ?? "Unknown error"
-                showingError = true
-            }
-            
-        } catch let videoError as VideoGenerationError {
-            switch videoError {
-            case .serverUnavailable:
-                errorMessage = "Video generation server unavailable. Check that Social Effects is installed."
-                ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: "Server unavailable")
-            case .generationFailed(let message):
-                errorMessage = "Video generation failed: \(message)"
-                ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: message)
-            case .unknown(let underlying):
-                errorMessage = "Video generation error: \(underlying.localizedDescription)"
-                ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: "\(underlying)")
-            }
-            showingError = true
-        } catch {
-            errorMessage = "Instagram post failed: \(error.localizedDescription)"
-            showingError = true
-            ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: "\(error)")
+            return TestPostResult(
+                success: result.success,
+                message: result.success ? "Posted to Instagram! 🎉" : (result.error?.localizedDescription ?? "Unknown error"),
+                postURL: result.postURL
+            )
         }
-        
-        instagramTesting = false
     }
 }

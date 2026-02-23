@@ -138,7 +138,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
     }
     
     /// Generic test post performer with error handling
-    private func performTest(
+    internal func performTest(
         platform: String,
         operation: () async throws -> TestPostResult
     ) async {

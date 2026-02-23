@@ -62,10 +62,33 @@ struct ErrorLogView: View {
                 List(errorLog.entries, selection: $selectedEntry) { entry in
                     ErrorEntryRow(entry: entry)
                         .tag(entry)
+                        .contextMenu {
+                            Button {
+                                copyEntry(entry)
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        }
                 }
                 .listStyle(.inset)
             }
         }
+    }
+    
+    private func copyEntry(_ entry: ErrorEntry) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let timestamp = dateFormatter.string(from: entry.timestamp)
+        
+        var textToCopy = "[\(entry.category)] \(timestamp)\n\(entry.message)"
+        if let detail = entry.detail {
+            textToCopy += "\n\(detail)"
+        }
+        
+        pasteboard.setString(textToCopy, forType: .string)
     }
 }
 

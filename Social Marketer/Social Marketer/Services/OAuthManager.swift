@@ -62,7 +62,7 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
                 tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
-                redirectURI: "\(AppConfiguration.URLs.socialEffects)/oauth/callback",
+                redirectURI: "http://localhost:9090/oauth/callback",
                 scopes: ["openid", "profile", "w_member_social"],
                 usePKCE: false
             )
@@ -75,7 +75,7 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.facebook.com/v24.0/dialog/oauth")!,
                 tokenURL: URL(string: "https://graph.facebook.com/v24.0/oauth/access_token")!,
-                redirectURI: "\(AppConfiguration.URLs.socialEffects)/oauth/callback",
+                redirectURI: "http://localhost:9091/oauth/callback",
                 scopes: ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "business_management"],
                 usePKCE: false
             )
@@ -88,7 +88,7 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.facebook.com/v24.0/dialog/oauth")!,
                 tokenURL: URL(string: "https://graph.facebook.com/v24.0/oauth/access_token")!,
-                redirectURI: "\(AppConfiguration.URLs.socialEffects)/oauth/callback",
+                redirectURI: "http://localhost:9092/oauth/callback",
                 scopes: ["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement", "business_management"],
                 usePKCE: false
             )
@@ -101,7 +101,7 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://www.pinterest.com/oauth/")!,
                 tokenURL: URL(string: "https://api.pinterest.com/v5/oauth/token")!,
-                redirectURI: "\(AppConfiguration.URLs.socialEffects)/oauth/callback",
+                redirectURI: "http://localhost:9093/oauth/callback",
                 scopes: ["boards:read", "boards:write", "pins:read", "pins:write"],
                 usePKCE: false
             )
@@ -114,7 +114,7 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 clientSecret: clientSecret,
                 authURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
                 tokenURL: URL(string: "https://oauth2.googleapis.com/token")!,
-                redirectURI: "\(AppConfiguration.URLs.socialEffects)/oauth/callback",
+                redirectURI: "http://localhost:9094/oauth/callback",
                 scopes: ["https://www.googleapis.com/auth/youtube.upload"],
                 usePKCE: false
             )
