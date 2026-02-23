@@ -120,9 +120,10 @@ final class PostScheduler {
         return calendar.isDate(lastPostDate, inSameDayAs: Date())
     }
     
-    /// Execute scheduled posting (called by launchd or manually)
+    /// Execute scheduled posting (called by launchd or manually).
+    /// Now queue-driven: processes pending posts from Core Data queue.
     func executeScheduledPost() async {
-        logger.info("Executing scheduled post...")
+        logger.info("Executing scheduled post (queue-driven)...")
         
         // Diagnostic: log platform state (when Debug Mode enabled)
         let context = PersistenceController.shared.viewContext
@@ -156,48 +157,10 @@ final class PostScheduler {
         // Check if introductory post is due (every 90 days)
         await postIntroductoryIfDue()
         
-        do {
-            // 1. Fetch daily wisdom
-            let rssParser = RSSParser()
-            guard let entry = try await rssParser.fetchDaily() else {
-                logger.warning("No daily wisdom entry available")
-                return
-            }
-            
-            logger.info("Fetched wisdom: \(entry.title)")
-            
-            // 2. Generate quote graphic
-            let generator = QuoteGraphicGenerator()
-            guard let image = generator.generate(from: entry) else {
-                logger.error("Failed to generate quote graphic")
-                return
-            }
-            
-            // 3. Save to temp directory
-            let tempURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("wisdom_\(Date().timeIntervalSince1970).png")
-            try generator.save(image, to: tempURL)
-            
-            logger.info("Quote graphic saved to \(tempURL.path)")
-            
-            // 3a. Get or create video (checks for existing first)
-            let videoURL = try await getOrCreateVideo(for: entry)
-            
-            // 4. Post to enabled platforms (excluding those already posted today)
-            await router.postToAll(entry: entry, image: image, imageURL: tempURL, videoURL: videoURL, link: entry.link, platforms: platformsToPost)
-            
-            // 5. Ping Google Search Console
-            await pingGoogle(url: entry.link)
-            
-            // 6. Cleanup - only remove temp image, preserve video files
-            try? FileManager.default.removeItem(at: tempURL)
-            // Note: We don't delete videoURL because it might be a reused existing video
-            
-            logger.info("Scheduled posting complete")
-            
-        } catch {
-            logger.error("Scheduled posting failed: \(error.localizedDescription)")
-        }
+        // Process the queue (auto-populates from RSS if empty)
+        await processQueue()
+        
+        logger.info("Scheduled posting complete")
     }
     
     // MARK: - Introductory Post (90-Day Cycle)
@@ -323,13 +286,23 @@ final class PostScheduler {
     
     // MARK: - Queue Processing
     
-    /// Process all pending posts whose scheduled date has arrived
+    /// Process all pending posts whose scheduled date has arrived.
+    /// If queue is empty, auto-populates from RSS feed to ensure continuous posting.
     func processQueue() async {
         let context = PersistenceController.shared.viewContext
+        
+        // Auto-populate queue if empty (fetch from RSS)
         let pendingPosts = Post.fetchPending(in: context)
+        if pendingPosts.isEmpty {
+            logger.info("Queue is empty - auto-populating from RSS feed...")
+            await autoPopulateQueueFromRSS()
+        }
+        
+        // Re-fetch after potential population
+        let postsToProcess = Post.fetchPending(in: context)
         
         let now = Date()
-        let duePosts = pendingPosts.filter { post in
+        let duePosts = postsToProcess.filter { post in
             guard let scheduledDate = post.scheduledDate else { return false }
             return scheduledDate <= now
         }
@@ -353,8 +326,61 @@ final class PostScheduler {
         }
     }
     
+    /// Auto-populates the Post Queue from RSS feed when empty.
+    /// Fetches entries from RSS and creates Post entities for each.
+    private func autoPopulateQueueFromRSS() async {
+        let context = PersistenceController.shared.viewContext
+        
+        do {
+            // Try to fetch from thoughts feed first (more variety)
+            let rssParser = RSSParser()
+            
+            // Fetch multiple entries to build up the queue
+            // Try thoughts feed first, fall back to daily
+            let entries = try await rssParser.fetchFeed(url: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml")
+                .shuffled() // Randomize to cycle through content
+            
+            guard !entries.isEmpty else {
+                // Fall back to daily feed
+                guard let dailyEntry = try await rssParser.fetchDaily() else {
+                    logger.warning("No entries available from RSS feeds")
+                    return
+                }
+                createPostFromEntry(dailyEntry, in: context)
+                PersistenceController.shared.save()
+                logger.info("Added 1 entry from daily feed to queue")
+                return
+            }
+            
+            // Add up to 5 entries to the queue
+            let entriesToAdd = entries.prefix(5)
+            for entry in entriesToAdd {
+                createPostFromEntry(entry, in: context)
+            }
+            
+            PersistenceController.shared.save()
+            logger.info("Added \(entriesToAdd.count) entries to queue from RSS")
+            
+        } catch {
+            logger.error("Failed to auto-populate queue: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Creates a Post entity from a WisdomEntry
+    private func createPostFromEntry(_ entry: WisdomEntry, in context: NSManagedObjectContext) {
+        let post = Post(
+            context: context,
+            content: entry.content,
+            imageURL: nil, // Will be generated at post time
+            link: entry.link
+        )
+        // Schedule for immediate posting (now)
+        post.scheduledDate = Date()
+        logger.debug("Created post from entry: \(entry.title ?? "Untitled")")
+    }
+    
     /// Post a single queued post to all enabled platforms — delegates to PlatformRouter
-    /// Checks for existing video before generating new one
+    /// Generates graphic at post time if not already available, checks for existing video
     private func postFromQueue(_ post: Post, to platforms: [Platform]) async {
         guard let content = post.content else {
             logger.warning("Skipping post with no content")
@@ -363,18 +389,10 @@ final class PostScheduler {
             return
         }
         
-        // Load image if available
-        var image: NSImage?
-        if let imageURL = post.imageURL {
-            image = NSImage(contentsOf: imageURL)
-        }
-        
         let link = post.link ?? URL(string: AppConfiguration.URLs.wisdomBook)!
         
-        // Check if we need a video for this post (for YouTube or other video platforms)
-        // First line of content is used as title for video matching
+        // Build entry for graphic/video generation
         let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
-        // Get or create video for this post
         let entry = WisdomEntry(
             id: UUID(),
             title: String(title),
@@ -384,6 +402,40 @@ final class PostScheduler {
             pubDate: Date(),
             category: .thought
         )
+        
+        // Generate quote graphic (if not already generated)
+        var image: NSImage?
+        var tempImageURL: URL?
+        
+        if let existingImageURL = post.imageURL,
+           let existingImage = NSImage(contentsOf: existingImageURL) {
+            // Use pre-generated image
+            image = existingImage
+            tempImageURL = existingImageURL
+            logger.debug("Using pre-generated image for post")
+        } else {
+            // Generate graphic now
+            logger.info("Generating quote graphic for post...")
+            let generator = QuoteGraphicGenerator()
+            if let generatedImage = generator.generate(from: entry) {
+                image = generatedImage
+                
+                // Save to temp for platforms that need URL
+                let tempURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("wisdom_\(Date().timeIntervalSince1970).png")
+                do {
+                    try generator.save(generatedImage, to: tempURL)
+                    tempImageURL = tempURL
+                    logger.info("Quote graphic generated and saved")
+                } catch {
+                    logger.error("Failed to save generated image: \(error.localizedDescription)")
+                }
+            } else {
+                logger.error("Failed to generate quote graphic")
+            }
+        }
+        
+        // Get or create video for this post
         let videoURL = try? await getOrCreateVideo(for: entry)
         
         // Log video status
@@ -396,11 +448,16 @@ final class PostScheduler {
         let result = await router.postToAll(
             content: content,
             image: image,
-            imageURL: post.imageURL,
+            imageURL: tempImageURL,
             link: link,
             platforms: platforms,
             post: post
         )
+        
+        // Cleanup temp file if we generated one
+        if let tempURL = tempImageURL, tempURL != post.imageURL {
+            try? FileManager.default.removeItem(at: tempURL)
+        }
         
         // Ping Google if any platform succeeded
         if result.successes > 0 {
