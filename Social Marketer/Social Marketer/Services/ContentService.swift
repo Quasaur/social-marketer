@@ -22,26 +22,37 @@ actor ContentService: ContentServiceProtocol {
     
     // MARK: - Public Methods
     
-    /// Refresh content from the main wisdom feed
+    /// Refresh content from ALL RSS feeds (thoughts, quotes, passages)
     /// Returns the count of new entries added
     @discardableResult
     func refreshContent() async throws -> Int {
         let startTime = Date()
-        logger.info("Refreshing content from RSS feed...")
+        logger.info("Refreshing content from all RSS feeds...")
         
-        // Fetch from the main wisdom feed
-        guard let feedURL = RSSParser.feedURLs["wisdom"] else {
-            throw ContentError.invalidFeedURL
+        var allEntries: [WisdomEntry] = []
+        var totalFetched = 0
+        
+        // Fetch from all feed types for complete Content Library
+        let feedTypes = ["thoughts", "quotes", "passages", "daily"]
+        
+        for feedType in feedTypes {
+            guard let feedURL = RSSParser.feedURLs[feedType] else { continue }
+            
+            do {
+                let entries = try await rssParser.fetchFeed(url: feedURL)
+                allEntries.append(contentsOf: entries)
+                totalFetched += entries.count
+                logger.info("Fetched \(entries.count) entries from \(feedType) feed")
+            } catch {
+                logger.warning("Failed to fetch \(feedType) feed: \(error.localizedDescription)")
+            }
         }
         
-        let fetchStart = Date()
-        let entries = try await rssParser.fetchFeed(url: feedURL)
-        let fetchTime = Date().timeIntervalSince(fetchStart)
-        logger.info("Fetched \(entries.count) entries in \(String(format: "%.2f", fetchTime))s")
+        logger.info("Total fetched: \(totalFetched) entries from all feeds")
         
         // Cache entries on main actor (Core Data requirement)
         let cacheStart = Date()
-        let newCount = await cacheEntries(entries)
+        let newCount = await cacheEntries(allEntries)
         let cacheTime = Date().timeIntervalSince(cacheStart)
         logger.info("Cached \(newCount) new entries in \(String(format: "%.2f", cacheTime))s")
         
