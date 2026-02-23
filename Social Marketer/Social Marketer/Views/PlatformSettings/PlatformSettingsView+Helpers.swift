@@ -9,10 +9,38 @@ import SwiftUI
 
 extension PlatformSettingsView {
     
+    /// Get the first pending post (scheduled post for the day)
     func getFirstPendingPost() async -> Post? {
         let context = PersistenceController.shared.viewContext
         return await context.perform {
-            return Post.fetchPending(in: context).first
+            let pending = Post.fetchPending(in: context)
+            let now = Date()
+            // Return the first post that is due (scheduled date <= now)
+            // or just the first pending post if none are specifically due
+            return pending.first { post in
+                guard let scheduled = post.scheduledDate else { return false }
+                return scheduled <= now
+            } ?? pending.first
+        }
+    }
+    
+    /// Get the scheduled post for today (due post)
+    func getScheduledPostForToday() async -> Post? {
+        let context = PersistenceController.shared.viewContext
+        return await context.perform {
+            let pending = Post.fetchPending(in: context)
+            let now = Date()
+            let calendar = Calendar.current
+            
+            // Find post scheduled for today (or earliest due post)
+            return pending.first { post in
+                guard let scheduled = post.scheduledDate else { return false }
+                return scheduled <= now
+            } ?? pending.min { post1, post2 in
+                guard let date1 = post1.scheduledDate else { return false }
+                guard let date2 = post2.scheduledDate else { return true }
+                return date1 < date2
+            }
         }
     }
     

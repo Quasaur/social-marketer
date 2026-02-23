@@ -50,37 +50,116 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
     
     // MARK: - Test Post Methods
     
-    /// Test post to Twitter/X
+    /// Get the scheduled post for today from the queue
+    private func getScheduledPost() async -> Post? {
+        let context = PersistenceController.shared.viewContext
+        return await context.perform {
+            let pending = Post.fetchPending(in: context)
+            let now = Date()
+            
+            // Find post scheduled for today (or earliest due post)
+            return pending.first { post in
+                guard let scheduled = post.scheduledDate else { return false }
+                return scheduled <= now
+            } ?? pending.min { post1, post2 in
+                guard let date1 = post1.scheduledDate else { return false }
+                guard let date2 = post2.scheduledDate else { return true }
+                return date1 < date2
+            }
+        }
+    }
+    
+    /// Generate content and image for test post from scheduled post
+    private func prepareScheduledContent() async -> (content: String, image: NSImage?, link: URL, title: String)? {
+        guard let scheduledPost = await getScheduledPost() else {
+            ErrorLog.shared.log(category: "TestPost", message: "No scheduled post available", detail: "Queue is empty or no due posts")
+            return nil
+        }
+        
+        guard let content = scheduledPost.content else {
+            ErrorLog.shared.log(category: "TestPost", message: "Scheduled post has no content", detail: nil)
+            return nil
+        }
+        
+        let link = scheduledPost.link ?? URL(string: AppConfiguration.URLs.wisdomBook)!
+        let title = String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")
+        
+        // Generate graphic for the content
+        let generator = QuoteGraphicGenerator()
+        let entry = WisdomEntry(
+            id: UUID(),
+            title: title,
+            content: content,
+            reference: nil,
+            link: link,
+            pubDate: Date(),
+            category: .thought
+        )
+        
+        let image = generator.generate(from: entry)
+        
+        if image == nil {
+            ErrorLog.shared.log(category: "TestPost", message: "Failed to generate graphic", detail: "Proceeding with text-only post")
+        }
+        
+        return (content, image, link, title)
+    }
+    
+    /// Test post to Twitter/X - uses scheduled post from queue
     func testTwitterPost() async {
         await performTest(platform: "twitter") {
+            guard let prepared = await self.prepareScheduledContent() else {
+                return TestPostResult(
+                    success: false,
+                    message: "No scheduled post available. Check Post Queue.",
+                    postURL: nil
+                )
+            }
+            
             let connector = TwitterConnector()
             _ = await connector.isConfigured
             
-            let caption = ContentConstants.shortDescription
+            let captionBuilder = CaptionBuilder()
+            let entry = WisdomEntry(
+                id: UUID(),
+                title: prepared.title,
+                content: prepared.content,
+                reference: nil,
+                link: prepared.link,
+                pubDate: Date(),
+                category: .thought
+            )
+            let caption = captionBuilder.buildHashtagCaption(from: entry)
             
-            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
-               let image = NSImage(contentsOfFile: imagePath) {
-                let link = URL(string: AppConfiguration.URLs.wisdomBook)!
-                let result = try await connector.post(image: image, caption: "", link: link)
+            if let image = prepared.image {
+                let result = try await connector.post(image: image, caption: caption, link: prepared.link)
                 return TestPostResult(
                     success: result.success,
-                    message: result.success ? "Image posted to X! 🎉" : "Failed to post image",
+                    message: result.success ? "Posted scheduled content to X! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
                     postURL: result.postURL
                 )
             } else {
                 let result = try await connector.postText(caption)
                 return TestPostResult(
                     success: result.success,
-                    message: result.success ? "Posted to X! 🎉" : "Failed to post",
+                    message: result.success ? "Posted scheduled content to X! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
                     postURL: result.postURL
                 )
             }
         }
     }
     
-    /// Test post to LinkedIn
+    /// Test post to LinkedIn - uses scheduled post from queue
     func testLinkedInPost(oauthManager: OAuthManager) async {
         await performTest(platform: "linkedin") {
+            guard let prepared = await self.prepareScheduledContent() else {
+                return TestPostResult(
+                    success: false,
+                    message: "No scheduled post available. Check Post Queue.",
+                    postURL: nil
+                )
+            }
+            
             let connector = LinkedInConnector()
             let tokens = try oauthManager.getTokens(for: "linkedin")
             connector.setAccessToken(tokens.accessToken)
@@ -94,18 +173,47 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
             }
             connector.setIdToken(idToken)
             
-            let result = try await connector.postText(ContentConstants.introText)
-            return TestPostResult(
-                success: result.success,
-                message: result.success ? "Posted to LinkedIn! 🎉" : "Failed to post",
-                postURL: result.postURL
+            let captionBuilder = CaptionBuilder()
+            let entry = WisdomEntry(
+                id: UUID(),
+                title: prepared.title,
+                content: prepared.content,
+                reference: nil,
+                link: prepared.link,
+                pubDate: Date(),
+                category: .thought
             )
+            let caption = captionBuilder.buildHashtagCaption(from: entry)
+            
+            if let image = prepared.image {
+                let result = try await connector.post(image: image, caption: caption, link: prepared.link)
+                return TestPostResult(
+                    success: result.success,
+                    message: result.success ? "Posted scheduled content to LinkedIn! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
+                    postURL: result.postURL
+                )
+            } else {
+                let result = try await connector.postText(caption)
+                return TestPostResult(
+                    success: result.success,
+                    message: result.success ? "Posted scheduled content to LinkedIn! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
+                    postURL: result.postURL
+                )
+            }
         }
     }
     
-    /// Test post to Facebook
+    /// Test post to Facebook - uses scheduled post from queue
     func testFacebookPost() async {
         await performTest(platform: "facebook") {
+            guard let prepared = await self.prepareScheduledContent() else {
+                return TestPostResult(
+                    success: false,
+                    message: "No scheduled post available. Check Post Queue.",
+                    postURL: nil
+                )
+            }
+            
             let connector = FacebookConnector()
             guard await connector.isConfigured else {
                 return TestPostResult(
@@ -115,22 +223,30 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
                 )
             }
             
-            let introText = ContentConstants.introText
-            let link = URL(string: AppConfiguration.URLs.wisdomBook)!
+            let captionBuilder = CaptionBuilder()
+            let entry = WisdomEntry(
+                id: UUID(),
+                title: prepared.title,
+                content: prepared.content,
+                reference: nil,
+                link: prepared.link,
+                pubDate: Date(),
+                category: .thought
+            )
+            let caption = captionBuilder.buildCaption(from: entry)
             
-            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
-               let image = NSImage(contentsOfFile: imagePath) {
-                let result = try await connector.post(image: image, caption: introText, link: link)
+            if let image = prepared.image {
+                let result = try await connector.post(image: image, caption: caption, link: prepared.link)
                 return TestPostResult(
                     success: result.success,
-                    message: result.success ? "Intro posted to Facebook with graphic! 🎉" : "Failed to post",
+                    message: result.success ? "Posted scheduled content to Facebook! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
                     postURL: result.postURL
                 )
             } else {
-                let result = try await connector.postText(introText)
+                let result = try await connector.postText(caption)
                 return TestPostResult(
                     success: result.success,
-                    message: result.success ? "Intro posted to Facebook! 🎉" : "Failed to post",
+                    message: result.success ? "Posted scheduled content to Facebook! 🎉" : (result.error?.localizedDescription ?? "Failed to post"),
                     postURL: result.postURL
                 )
             }

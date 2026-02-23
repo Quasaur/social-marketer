@@ -3,6 +3,7 @@
 //  SocialMarketer
 //
 //  Pinterest and YouTube test post methods for PlatformSettingsView
+//  Uses the scheduled post for the day from the queue
 //
 
 import SwiftUI
@@ -31,23 +32,47 @@ extension PlatformSettingsView {
                     postURL: nil
                 )
             }
-            let caption = ContentConstants.introText
-            if let imagePath = Bundle.main.path(forResource: "test_intro_graphic", ofType: "png"),
-               let image = NSImage(contentsOfFile: imagePath) {
-                let link = URL(string: "https://www.wisdombook.life")!
-                let result = try await connector.post(image: image, caption: caption, link: link)
-                return TestPostResult(
-                    success: result.success,
-                    message: result.success ? "Pinned to Pinterest! 📌" : (result.error?.localizedDescription ?? "Pinterest post failed"),
-                    postURL: result.postURL
-                )
-            } else {
+            
+            // Get the scheduled post for today
+            guard let scheduledPost = await getScheduledPostForToday(),
+                  let content = scheduledPost.content else {
                 return TestPostResult(
                     success: false,
-                    message: "Could not load intro graphic for Pinterest pin.",
+                    message: "No scheduled post available. Check Post Queue.",
                     postURL: nil
                 )
             }
+            
+            let link = scheduledPost.link ?? URL(string: "https://www.wisdombook.life")!
+            
+            let captionBuilder = CaptionBuilder()
+            let entry = WisdomEntry(
+                id: UUID(),
+                title: String(content.prefix(60)),
+                content: content,
+                reference: nil,
+                link: link,
+                pubDate: Date(),
+                category: .thought
+            )
+            let caption = captionBuilder.buildCaption(from: entry)
+            
+            // Generate graphic for the scheduled content
+            let generator = QuoteGraphicGenerator()
+            guard let image = generator.generate(from: entry) else {
+                return TestPostResult(
+                    success: false,
+                    message: "Could not generate image for Pinterest pin.",
+                    postURL: nil
+                )
+            }
+            
+            let result = try await connector.post(image: image, caption: caption, link: link)
+            return TestPostResult(
+                success: result.success,
+                message: result.success ? "Pinned scheduled content to Pinterest! 📌" : (result.error?.localizedDescription ?? "Pinterest post failed"),
+                postURL: result.postURL
+            )
         }
     }
     
@@ -56,7 +81,7 @@ extension PlatformSettingsView {
     @MainActor
     func testYouTubePost() async {
         await testManager.performTest(platform: "youtube") {
-            ErrorLog.shared.log(category: "YouTube", message: "Test Post started", detail: "Checking for queued content or RSS feed...")
+            ErrorLog.shared.log(category: "YouTube", message: "Test Post started", detail: "Using scheduled post from queue...")
             
             let connector = YouTubeConnector()
             guard await connector.isConfigured else {
@@ -65,46 +90,35 @@ extension PlatformSettingsView {
                 return TestPostResult(success: false, message: msg, postURL: nil)
             }
             
-            let (title, content, videoURL): (String, String, URL?)
-            if let queuedPost = await getFirstPendingPost() {
-                title = queuedPost.content?.prefix(60).replacingOccurrences(of: "\n", with: " ") ?? "Wisdom"
-                content = queuedPost.content ?? ""
-                ErrorLog.shared.log(category: "YouTube", message: "Using queued post: \(title)", detail: "Found pending post in Queue")
-                videoURL = await findExistingVideo(for: title)
-            } else if let cachedEntry = await ContentService.shared.getNextEntryForPosting() {
-                // Fall back to Content Library cache
-                title = cachedEntry.title ?? "Wisdom"
-                content = cachedEntry.content ?? ""
-                ErrorLog.shared.log(category: "YouTube", message: "Using Content Library: \(title)", detail: "No queued posts, using cached entry")
-                videoURL = await findExistingVideo(for: title)
-            } else {
-                // Last resort: try RSS directly
-                let rssParser = RSSParser()
-                guard let entry = try await rssParser.fetchDaily() else {
-                    let msg = "No posts in queue, Content Library empty, and RSS feed unavailable."
-                    ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
-                    return TestPostResult(success: false, message: msg, postURL: nil)
-                }
-                title = entry.title
-                content = entry.content
-                ErrorLog.shared.log(category: "YouTube", message: "Using RSS feed: \(title)", detail: "No cached content, fetched from RSS")
-                videoURL = nil
+            // Get the scheduled post for today
+            guard let scheduledPost = await getScheduledPostForToday(),
+                  let content = scheduledPost.content else {
+                let msg = "No scheduled post available. Check Post Queue."
+                ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
+                return TestPostResult(success: false, message: msg, postURL: nil)
             }
             
+            let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
+            ErrorLog.shared.log(category: "YouTube", message: "Using scheduled post: \(title)", detail: "Found in Queue")
+            
             let finalVideoURL: URL
-            if let existingURL = videoURL {
+            if let existingURL = await findExistingVideo(for: title) {
                 finalVideoURL = existingURL
                 ErrorLog.shared.log(category: "YouTube", message: "Using existing video", detail: "Found: \(finalVideoURL.lastPathComponent)")
             } else {
                 ErrorLog.shared.log(category: "YouTube", message: "Generating new video", detail: "No existing video found for: \(title)")
                 let videoGen = VideoGenerator()
-                let entry = WisdomEntry(id: UUID(), title: title, content: content, reference: nil, link: URL(string: "https://wisdombook.life")!, pubDate: Date(), category: .thought)
-                let manager = SocialEffectsProcessManager.shared
-                let serverRunning = await manager.serverIsRunning
-                ErrorLog.shared.log(category: "YouTube", message: "Social Effects status check", detail: "Server running: \(serverRunning)")
+                let entry = WisdomEntry(
+                    id: UUID(),
+                    title: String(title),
+                    content: content,
+                    reference: nil,
+                    link: scheduledPost.link ?? URL(string: "https://wisdombook.life")!,
+                    pubDate: Date(),
+                    category: .thought
+                )
                 
                 do {
-                    ErrorLog.shared.log(category: "YouTube", message: "Starting video generation", detail: "Title: \(title)")
                     guard let generatedURL = try await videoGen.generateVideo(entry: entry) else {
                         let msg = "Video generation failed - no URL returned"
                         ErrorLog.shared.log(category: "YouTube", message: "Video generation failed", detail: msg)
@@ -116,13 +130,13 @@ extension PlatformSettingsView {
                     let errorDetail: String
                     switch error {
                     case .serverUnavailable:
-                        errorDetail = "Social Effects server unavailable. Check that the server is running on port 5390."
+                        errorDetail = "Social Effects server unavailable. Check that the server is running."
                     case .generationFailed(let message):
                         errorDetail = "Generation failed: \(message)"
                     case .unknown(let underlying):
                         errorDetail = "Unknown error: \(underlying.localizedDescription)"
                     }
-                    ErrorLog.shared.log(category: "YouTube", message: "Video generation error: \(error)", detail: errorDetail)
+                    ErrorLog.shared.log(category: "YouTube", message: "Video generation error", detail: errorDetail)
                     return TestPostResult(success: false, message: errorDetail, postURL: nil)
                 }
             }
@@ -132,11 +146,8 @@ extension PlatformSettingsView {
             let result = try await connector.postVideo(finalVideoURL, caption: caption)
             
             if result.success {
-                if let queuedPost = await getFirstPendingPost() {
-                    await markPostAsPosted(queuedPost, result: result)
-                }
                 let detail = "URL: \(result.postURL?.absoluteString ?? "No URL")\nPost ID: \(result.postID ?? "No ID")"
-                ErrorLog.shared.log(category: "YouTube", message: "Posted to YouTube! 🎬", detail: detail)
+                ErrorLog.shared.log(category: "YouTube", message: "Posted scheduled content to YouTube! 🎬", detail: detail)
             } else {
                 let detail = result.error?.localizedDescription ?? "Unknown error"
                 ErrorLog.shared.log(category: "YouTube", message: "YouTube upload failed", detail: detail)
@@ -144,7 +155,7 @@ extension PlatformSettingsView {
             
             return TestPostResult(
                 success: result.success,
-                message: result.success ? "Posted to YouTube! 🎬" : (result.error?.localizedDescription ?? "Unknown error"),
+                message: result.success ? "Posted scheduled content to YouTube! 🎬" : (result.error?.localizedDescription ?? "Unknown error"),
                 postURL: result.postURL
             )
         }
