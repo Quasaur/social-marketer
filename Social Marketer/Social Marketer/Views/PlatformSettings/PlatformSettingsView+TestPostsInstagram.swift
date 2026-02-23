@@ -79,27 +79,17 @@ extension PlatformSettingsView {
                         category: .thought
                     )
                     
-                    if let videoURL = try await videoGen.generateVideo(entry: entry) {
-                        result = try await connector.postVideo(videoURL, caption: caption)
-                    } else {
-                        ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Video generation failed - falling back to image")
-                        
-                        let generator = QuoteGraphicGenerator()
-                        guard let image = generator.generate(from: entry) else {
-                            return TestPostResult(
-                                success: false,
-                                message: "Could not generate image for Instagram post.",
-                                postURL: nil
-                            )
-                        }
-                        
-                        result = try await connector.post(image: image, caption: caption, link: link)
+                    guard let videoURL = try await videoGen.generateVideo(entry: entry) else {
+                        // Video generation failed - log error and fail (don't fallback to image)
+                        let errorMsg = "Video generation failed for Instagram Reel. Platform is set to video preference."
+                        ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: errorMsg)
                         return TestPostResult(
-                            success: result.success,
-                            message: result.success ? "Posted IMAGE to Instagram (video failed). 🎉" : (result.error?.localizedDescription ?? "Unknown error"),
-                            postURL: result.postURL
+                            success: false,
+                            message: errorMsg,
+                            postURL: nil
                         )
                     }
+                    result = try await connector.postVideo(videoURL, caption: caption)
                 }
             } else {
                 ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Platform prefers image - generating graphic")

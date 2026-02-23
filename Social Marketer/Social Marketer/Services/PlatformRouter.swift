@@ -127,40 +127,58 @@ final class PlatformRouter {
             
             // Determine media type based on platform capabilities and preferences
             let platformPrefersVideo = platform.prefersVideo
-            let canUseVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
+            let videoAvailable = (videoURL != nil)
+            let isVideoPlatform = (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
             let disableVideoForPlatform = (platformName == "X (Twitter)" || platformName == "Facebook")
-            
-            // For Instagram/TikTok: respect user preference; for others: auto-determine
-            let useVideo: Bool
-            if platformName == "Instagram" || platformName == "TikTok" {
-                useVideo = canUseVideo && platformPrefersVideo
-            } else {
-                useVideo = canUseVideo && !disableVideoForPlatform
-            }
             
             do {
                 var result: PostResult
+                
+                // Check if platform is set to video preference but video is not available
+                if isVideoPlatform && platformPrefersVideo && !videoAvailable {
+                    let errorMsg = "\(platformName) is set to video preference but no video is available. Video generation may have failed."
+                    logger.error("❌ \(errorMsg)")
+                    ErrorLog.shared.log(category: platformName, message: "Video post failed - no video available", detail: errorMsg)
+                    let log = PostLog(context: context, post: postRecord, platform: platform, error: errorMsg)
+                    postRecord.addToLogs(log)
+                    failureCount += 1
+                    errorMessages.append("\(platformName): \(errorMsg)")
+                    continue
+                }
+                
+                // For Instagram/TikTok: respect user preference; for others: auto-determine
+                let useVideo: Bool
+                if platformName == "Instagram" || platformName == "TikTok" {
+                    useVideo = videoAvailable && platformPrefersVideo
+                } else {
+                    useVideo = videoAvailable && !disableVideoForPlatform
+                }
                 
                 if useVideo && !disableVideoForPlatform, let videoPath = videoURL {
                     if let videoConnector = connector as? VideoPlatformConnector {
                         logger.info("🎥 Posting VIDEO to \(platformName)")
                         result = try await videoConnector.postVideo(videoPath, caption: caption)
                     } else {
-                        if platformName == "Instagram" {
-                            logger.warning("Instagram video posting not strictly implemented, falling back to image")
-                        }
-                        guard let img = image else {
-                            let log = PostLog(context: context, post: postRecord, platform: platform, error: "No image available")
-                            postRecord.addToLogs(log)
-                            logger.warning("Skipped \(platformName) — no image")
-                            continue
-                        }
-                        result = try await connector.post(image: img, caption: caption, link: link)
+                        // Platform prefers video but connector doesn't support video - this is an error
+                        let errorMsg = "\(platformName) is set to video preference but video posting is not available. Check connector implementation."
+                        logger.error("❌ \(errorMsg)")
+                        ErrorLog.shared.log(category: platformName, message: "Video post failed", detail: errorMsg)
+                        let log = PostLog(context: context, post: postRecord, platform: platform, error: errorMsg)
+                        postRecord.addToLogs(log)
+                        failureCount += 1
+                        errorMessages.append("\(platformName): \(errorMsg)")
+                        continue
                     }
                 } else {
                     // IMAGE POST
                     if platformName == "YouTube" {
-                        logger.warning("Skipping \(platformName) - static images not supported")
+                        let errorMsg = "YouTube requires video but no video is available"
+                        logger.error("❌ \(errorMsg)")
+                        ErrorLog.shared.log(category: platformName, message: "Video post failed - no video", detail: errorMsg)
+                        let log = PostLog(context: context, post: postRecord, platform: platform, error: errorMsg)
+                        postRecord.addToLogs(log)
+                        failureCount += 1
+                        errorMessages.append("\(platformName): \(errorMsg)")
                         continue
                     }
                     
