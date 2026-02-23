@@ -47,13 +47,24 @@ extension PlatformSettingsView {
                     message: "Using queued post: \(title)",
                     detail: "Found pending post in Queue"
                 )
+            } else if let cachedEntry = await ContentService.shared.getNextEntryForPosting() {
+                // Fall back to Content Library cache
+                title = cachedEntry.title ?? "Wisdom"
+                content = cachedEntry.content ?? ""
+                link = cachedEntry.link ?? URL(string: "https://wisdombook.life")!
+                ErrorLog.shared.log(
+                    category: "Instagram",
+                    message: "Using Content Library: \(title)",
+                    detail: "No queued posts, using cached entry"
+                )
             } else {
+                // Last resort: try RSS directly
                 let rssParser = RSSParser()
                 guard let entry = try await rssParser.fetchDaily() else {
                     ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: "No content available")
                     return TestPostResult(
                         success: false,
-                        message: "No posts in queue and RSS feed unavailable.",
+                        message: "No posts in queue, Content Library empty, and RSS feed unavailable.",
                         postURL: nil
                     )
                 }
@@ -63,7 +74,7 @@ extension PlatformSettingsView {
                 ErrorLog.shared.log(
                     category: "Instagram",
                     message: "Using RSS feed: \(title)",
-                    detail: "No queued posts found, fetched from RSS"
+                    detail: "No cached content, fetched from RSS"
                 )
             }
             

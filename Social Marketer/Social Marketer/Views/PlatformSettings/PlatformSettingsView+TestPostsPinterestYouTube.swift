@@ -71,16 +71,23 @@ extension PlatformSettingsView {
                 content = queuedPost.content ?? ""
                 ErrorLog.shared.log(category: "YouTube", message: "Using queued post: \(title)", detail: "Found pending post in Queue")
                 videoURL = await findExistingVideo(for: title)
+            } else if let cachedEntry = await ContentService.shared.getNextEntryForPosting() {
+                // Fall back to Content Library cache
+                title = cachedEntry.title ?? "Wisdom"
+                content = cachedEntry.content ?? ""
+                ErrorLog.shared.log(category: "YouTube", message: "Using Content Library: \(title)", detail: "No queued posts, using cached entry")
+                videoURL = await findExistingVideo(for: title)
             } else {
+                // Last resort: try RSS directly
                 let rssParser = RSSParser()
                 guard let entry = try await rssParser.fetchDaily() else {
-                    let msg = "No posts in queue and RSS feed unavailable."
+                    let msg = "No posts in queue, Content Library empty, and RSS feed unavailable."
                     ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
                     return TestPostResult(success: false, message: msg, postURL: nil)
                 }
                 title = entry.title
                 content = entry.content
-                ErrorLog.shared.log(category: "YouTube", message: "Using RSS feed: \(title)", detail: "No queued posts found, fetched from RSS")
+                ErrorLog.shared.log(category: "YouTube", message: "Using RSS feed: \(title)", detail: "No cached content, fetched from RSS")
                 videoURL = nil
             }
             
