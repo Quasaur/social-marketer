@@ -75,21 +75,24 @@ RSS Item → Content Model → Graphic Generation → Platform Distribution
 ## Data Flow
 
 ### Post Creation Flow
-1. RSS Parser fetches new content
-2. Content stored in Core Data
-3. QuoteGraphicGenerator creates image
-4. User reviews in UI
-5. PlatformRouter distributes to enabled platforms
-6. Results logged to PostLog
+1. RSS Parser fetches new content (thoughts, quotes, passages)
+2. Content stored in Content Library (`CachedWisdomEntry`)
+3. Queue auto-populates with scheduled posts (one per day)
+4. QuoteGraphicGenerator creates image at post time
+5. VideoGenerator creates video if platform preferences require it
+6. PlatformRouter distributes to enabled platforms
+7. Results logged to PostLog + Content Library stats (image/video counts)
 
 ### Background Execution Flow
 1. launchd triggers at scheduled time
-2. Fetches pending posts from Core Data
-3. For each post:
-   - Generate/update graphic
-   - Distribute to platforms
+2. `processQueue()` checks for due posts
+3. If queue empty, auto-populates from RSS feeds
+4. For each due post:
+   - Generate graphic (if not pre-generated)
+   - Generate video (if platform prefers video)
+   - Distribute to platforms (respecting media preferences)
    - Log results
-4. Complete cycle
+5. Complete cycle
 
 ## Design Decisions
 

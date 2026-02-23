@@ -43,10 +43,11 @@ This file provides context for AI assistants and developers working on the Socia
 
 ### Data Flow
 
-1. **Content Ingestion**: RSS fetch → Core Data (`Post` entity)
-2. **Video Generation**: WisdomEntry → Social Effects → MP4 file
-3. **Posting**: Post + Video → PlatformRouter → Connector APIs
-4. **Logging**: All operations → ErrorLog + PostLog
+1. **Content Ingestion**: RSS fetch → Content Library (`CachedWisdomEntry`)
+2. **Queue Population**: RSS entries → Post Queue (`Post` entity, one per day)
+3. **Video Generation**: WisdomEntry → Social Effects → MP4 file
+4. **Posting**: Post + Video → PlatformRouter → Connector APIs
+5. **Logging**: All operations → ErrorLog + PostLog + Content Library stats (image/video counts)
 
 ### Social Effects Server Lifecycle
 
@@ -198,15 +199,31 @@ let videoPath = AppConfiguration.Paths.videoStorage
 - Configuration overrides → **UserDefaults** (optional)
 - Core Data → posts, logs, and cached content
 
+### Content Library
+
+The Content Library caches ALL Thoughts, Quotes, and Passages from RSS feeds:
+- **Refresh** button fetches from all RSS feeds (thoughts, quotes, passages)
+- Each item shows post history: 📷 (image count) / 🎬 (video count)
+- **Generate Graphic** button allows preview and manual posting
+- Content persists across app restarts
+
+### Queue-Driven Posting
+
+The Post Queue is now the single source of truth for posting:
+1. **Auto-population**: When queue is empty, RSS feeds populate it automatically
+2. **Scheduling**: One post per day (today, tomorrow, etc.)
+3. **Daily Scheduler**: Processes the due post from queue
+4. **Test Posts**: All Test Post/Pin buttons use the scheduled post for the day
+
 ## Testing
 
-### YouTube Test Post
+### Test Posts
 
-The Test Post button provides a safe way to verify YouTube integration:
-- Uses Queue content first, falls back to RSS
-- Checks for existing videos before generating
-- Logs all steps to ErrorLog
-- Only posts to YouTube (not other platforms)
+All Test Post/Pin buttons use the scheduled post from the queue:
+- **Content Source**: First pending post from Post Queue
+- **Media**: Respects Preferred Media Preferences (image/video)
+- **Error Handling**: Failures logged to Recent Errors (no fallback to other media types)
+- **Platforms**: Twitter, LinkedIn, Facebook, Instagram, Pinterest, YouTube
 
 ### Health Checks
 

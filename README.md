@@ -146,20 +146,21 @@ The Dashboard provides an overview of your distribution system:
 
 Manage your content pipeline:
 
-- **Pending Posts**: View and manage scheduled content
-- **Manual Post**: Fetch from RSS or compose custom thoughts
-- **Manual Thought**: Create custom content with graphic preview
+- **Pending Posts**: View and manage scheduled content (auto-populated from RSS feeds)
+- **Manual Post**: Process the next scheduled post from the queue to all enabled platforms
+- **Manual Thought**: Create custom content with graphic preview and add to queue
 
-### YouTube Test Post
+### Test Posts
 
-Before running scheduled posts, test YouTube integration:
+All **Test Post** and **Test Pin** buttons use the scheduled post for the day:
 
-1. Go to **Platform Settings**
-2. Connect YouTube (if not already connected)
-3. Click **"Test Post"** next to YouTube
-4. Check **Dashboard → Recent Errors** for detailed results
+1. Ensure you have content in the **Post Queue** (refresh Content Library if empty)
+2. Go to **Platform Settings**
+3. Click **"Test Post"** or **"Test Pin"** next to any platform
+4. The scheduled content will be posted with your preferred media settings (image/video)
+5. Check **Dashboard → Recent Errors** for any errors
 
-See [YouTube Test Post Results](docs/platforms/youtube_testpin_results.md) for troubleshooting.
+**Note**: Platforms set to video preference will fail if video generation fails (no fallback to image). Errors are logged for troubleshooting.
 
 ### Social Effects Status
 
