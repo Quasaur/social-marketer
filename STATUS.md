@@ -1,53 +1,62 @@
 # Social Marketer - Project Status
 
-## Current Status: ✅ **FULLY OPERATIONAL**
+## Version: **2.2** (Build 2)
+
+## Current Status: ✅ **QUEUE-DRIVEN ARCHITECTURE IMPLEMENTED**
 
 **GitHub:** <https://github.com/Quasaur/social-marketer>
 
-Social Marketer is a native macOS application that automates content distribution from The Book of Wisdom to social media platforms. **YouTube uploads are now fully automated with public visibility!**
+Social Marketer is a native macOS application that automates content distribution from The Book of Wisdom to social media platforms. **Queue-driven posting is now fully implemented!**
 
 ## What's Working
 
-### Core Features
+### Core Features (v2.2)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
+| **Queue-Driven Posting** | ✅ **NEW** | Auto-populates from RSS, one post per day |
+| Content Library | ✅ **NEW** | Caches ALL Thoughts, Quotes, Passages with post tracking |
+| Image/Video Post Tracking | ✅ **NEW** | Per-content-item stats (📷 / 🎬 counts) |
 | YouTube Uploads | ✅ **LIVE** | Videos upload as **Public**, no Studio intervention |
 | Video Generation | ✅ **LIVE** | Auto-starts Social Effects, generates Shorts |
 | Video Reuse | ✅ Working | Checks for existing videos before generating |
-| Post Queue | ✅ Working | Schedule and manage pending posts |
-| RSS Integration | ✅ Working | Fetches from wisdombook.life feeds |
+| Post Queue | ✅ Working | Auto-populated from RSS, scheduled posts |
+| RSS Integration | ✅ Working | Fetches from all wisdombook.life feeds |
 | Platform Connections | ✅ Working | OAuth for all platforms |
+| Test Posts (All Platforms) | ✅ Working | Uses scheduled post from queue |
 | Dashboard Analytics | ✅ Working | Real-time health monitoring |
 | Debug Mode | ✅ Working | Toggle-controlled logging |
+| Preferred Media Preferences | ✅ Working | Strict enforcement (no fallbacks) |
 
 ### Platform Status
 
 | Platform | Connect | Test Post | Auto-Post | Status |
 |----------|---------|-----------|-----------|--------|
 | YouTube | ✅ | ✅ | ✅ | **FULLY OPERATIONAL** |
-| Twitter/X | ✅ | 🔲 | 🔲 | OAuth ready, needs testing |
-| LinkedIn | ✅ | 🔲 | 🔲 | OAuth ready, needs testing |
-| Instagram | ✅ | 🔲 | 🔲 | OAuth ready, needs testing |
-| Pinterest | ✅ | 🔲 | 🔲 | OAuth ready, needs testing |
+| Twitter/X | ✅ | ✅ | ✅ | **Queue-driven ready** |
+| LinkedIn | ✅ | ✅ | ✅ | **Queue-driven ready** |
+| Facebook | ✅ | ✅ | ✅ | **Queue-driven ready** |
+| Instagram | ✅ | ✅ | 🔲 | Queue-driven, needs video test |
+| Pinterest | ✅ | ✅ | ✅ | **Queue-driven ready** |
 
 Legend: ✅ Working | 🔲 Not tested | ❌ Not working
 
-## Architecture
+## Architecture (Queue-Driven)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Social Marketer                                   │
-│                   (macOS SwiftUI App)                                │
-├─────────────────────────────────────────────────────────────────────┤
-│  Dashboard → Queue → PostScheduler → PlatformRouter                  │
-│                                              ↓                       │
-│              SocialEffectsService (HTTP client)                      │
-│                                              ↓                       │
-│              VideoGenerator → Social Effects API (localhost:5390)    │
-│                                              ↓                       │
-│              Platform Connectors → YouTube API                       │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Social Marketer v2.2                                │
+│                     (macOS SwiftUI App)                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Content Library → Post Queue → PostScheduler → PlatformRouter           │
+│        ↑                                              ↓                  │
+│   RSS Feeds                              SocialEffectsService            │
+│   (thoughts/quotes/                             ↓                        │
+│    passages)                      VideoGenerator + QuoteGraphicGenerator │
+│                                              ↓                           │
+│              Platform Connectors → YouTube/Twitter/LinkedIn/             │
+│                                    Instagram/Pinterest/Facebook          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Social Effects Server Lifecycle
@@ -123,31 +132,34 @@ YouTube requires these fields for public uploads:
 ]
 ```
 
-## Recent Updates (February 2026)
+## Recent Updates (February 2026) - v2.2 RELEASE
 
-### Major Achievements
+### Major Achievements (v2.2)
 
-1. **YouTube Public Uploads** - Videos now upload as Public without Studio intervention
-2. **Automatic Social Effects Startup** - App starts video generation service on launch
-3. **Video Discovery** - Reuses existing videos instead of regenerating
-4. **Debug Mode Toggle** - All debug logging controlled by Settings toggle
-5. **Error Log Integration** - Detailed logging visible in Dashboard
-6. **Configuration Centralization** - All hardcoded values moved to `AppConfiguration`
-7. **Dependency Injection Framework** - Protocol-based service abstraction layer
+1. **Queue-Driven Architecture** - Complete redesign with Post Queue as single source of truth
+2. **Content Library** - Caches ALL Thoughts, Quotes, Passages from RSS feeds
+3. **Image/Video Post Tracking** - Per-content-item stats showing 📷 (image) / 🎬 (video) counts
+4. **Auto-Population** - Queue automatically fills from RSS when empty (one post per day)
+5. **Test Posts Using Scheduled Content** - All Test Post/Pin buttons use scheduled post from queue
+6. **Strict Media Preferences** - No fallbacks (video preference + no video = error in Recent Errors)
+7. **OAuth Port Fix** - Changed from 5390 to unique ports (9090-9094) to avoid Social Effects conflict
 
-### Technical Improvements
+### Technical Improvements (v2.2)
 
-- Fixed `Content-Length` header for HTTP requests
-- Added process liveness checking for Social Effects
-- Improved error handling with specific error messages
-- Added comprehensive debug logging (toggle-controlled)
-- **NEW:** Centralized configuration in `Configuration.swift`
-- **NEW:** Machine-agnostic paths (works on any Mac)
-- **NEW:** Configurable Social Effects location via UserDefaults
-- **NEW:** Type-safe configuration values with documentation
-- **NEW:** Service protocols for testability (`ServiceProtocols.swift`)
-- **NEW:** DI container with SwiftUI environment injection (`ServiceContainer.swift`)
-- **NEW:** All major services now conform to protocols (8 services)
+- **Queue-Driven Workflow:** `processQueue()` now auto-populates and processes scheduled posts
+- **Content Library Stats:** `postedImageCount` and `postedVideoCount` in Core Data
+- **Test Post Unification:** All platforms use `getScheduledPostForToday()` helper
+- **Video Preference Enforcement:** Removed all video-to-image fallbacks
+- **RSS Feed Integration:** Auto-populates from thoughts, quotes, passages feeds
+- **Build Version:** Updated to v2.2 (Build 2)
+
+### Previous Achievements (v1.x)
+
+- **YouTube Public Uploads** - Videos upload as Public without Studio intervention
+- **Automatic Social Effects Startup** - App starts video generation service on launch
+- **Video Discovery** - Reuses existing videos instead of regenerating
+- **Configuration Centralization** - All hardcoded values moved to `AppConfiguration`
+- **Dependency Injection Framework** - Protocol-based service abstraction layer
 
 ## File Locations
 
@@ -190,16 +202,29 @@ No build-time configuration required. All settings are runtime:
 
 ## Testing Checklist
 
+### Core Features (v2.2)
+- [x] Queue auto-population from RSS
+- [x] Content Library with image/video tracking
+- [x] One post per day scheduling
+- [x] Test Posts use scheduled content (all platforms)
+- [x] Strict media preference enforcement
+- [x] OAuth port conflicts resolved
+
+### Platform Tests
 - [x] YouTube upload as Public
+- [x] YouTube Test Post (scheduled content)
+- [x] Twitter/X Test Post (scheduled content)
+- [x] LinkedIn Test Post (scheduled content)
+- [x] Facebook Test Post (scheduled content)
+- [x] Pinterest Test Pin (scheduled content)
+- [ ] Instagram Test Post (video) - **PENDING**
+
+### Previous Tests (v1.x)
 - [x] Video generation integration
 - [x] Auto-start Social Effects
 - [x] Video reuse (existing video found)
 - [x] Debug Mode toggle controls logging
 - [x] Dashboard health monitoring
-- [ ] Twitter upload
-- [ ] LinkedIn upload
-- [ ] Instagram upload
-- [ ] Pinterest upload
 
 ## Contact
 
