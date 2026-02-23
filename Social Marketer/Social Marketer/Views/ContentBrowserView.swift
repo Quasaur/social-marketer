@@ -174,11 +174,23 @@ struct ContentEntryRow: View {
                 
                 Spacer()
                 
-                // Used indicator
-                if entry.usedCount > 0 {
-                    Label("\(entry.usedCount)", systemImage: "checkmark.circle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.green)
+                // Post count indicators
+                HStack(spacing: 8) {
+                    if entry.postedImageCount > 0 {
+                        Label("\(entry.postedImageCount)", systemImage: "photo.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                    }
+                    if entry.postedVideoCount > 0 {
+                        Label("\(entry.postedVideoCount)", systemImage: "video.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                    if entry.usedCount > 0 && entry.postedImageCount == 0 && entry.postedVideoCount == 0 {
+                        Label("\(entry.usedCount)", systemImage: "checkmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    }
                 }
                 
                 // Date
@@ -245,10 +257,23 @@ struct ContentDetailSheet: View {
                         
                         Spacer()
                         
-                        if entry.usedCount > 0 {
-                            Text("Used \(entry.usedCount) time(s)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        // Post counts
+                        HStack(spacing: 12) {
+                            if entry.postedImageCount > 0 {
+                                Label("\(entry.postedImageCount) image", systemImage: "photo.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                            }
+                            if entry.postedVideoCount > 0 {
+                                Label("\(entry.postedVideoCount) video", systemImage: "video.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                            if entry.usedCount > 0 && entry.postedImageCount == 0 && entry.postedVideoCount == 0 {
+                                Text("Used \(entry.usedCount) time(s)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     

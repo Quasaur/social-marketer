@@ -204,10 +204,50 @@ final class PlatformRouter {
             }
         }
         
+        // Track if any images or videos were successfully posted (for Content Library stats)
+        var postedAnyImage = false
+        var postedAnyVideo = false
+        
         // Update post status
         let anySuccess = successCount > 0
         postRecord.postStatus = anySuccess ? .posted : .failed
         postRecord.postedDate = anySuccess ? Date() : nil
+        
+        // Update Content Library stats if we have a link to match
+        if anySuccess, let linkString = link.absoluteString as String? {
+            if let cachedEntry = CachedWisdomEntry.findByLink(linkString, in: context) {
+                // Track what we posted for stats
+                for platform in enabledPlatforms {
+                    let platformName = platform.name ?? ""
+                    let platformPrefersVideo = platform.prefersVideo
+                    let canUseVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
+                    let disableVideoForPlatform = (platformName == "X (Twitter)" || platformName == "Facebook")
+                    
+                    let useVideo: Bool
+                    if platformName == "Instagram" || platformName == "TikTok" {
+                        useVideo = canUseVideo && platformPrefersVideo
+                    } else {
+                        useVideo = canUseVideo && !disableVideoForPlatform
+                    }
+                    
+                    if useVideo {
+                        postedAnyVideo = true
+                    } else if !disableVideoForPlatform && platformName != "YouTube" {
+                        postedAnyImage = true
+                    }
+                }
+                
+                // Update the cached entry counters
+                if postedAnyVideo {
+                    cachedEntry.markPostedAsVideo()
+                } else if postedAnyImage {
+                    cachedEntry.markPostedAsImage()
+                } else {
+                    cachedEntry.markAsUsed()
+                }
+                logger.debug("Updated Content Library stats for entry: \(cachedEntry.title ?? "Untitled")")
+            }
+        }
         
         PersistenceController.shared.save()
         logger.info("Post results saved — \(anySuccess ? "at least one platform succeeded" : "all platforms failed")")

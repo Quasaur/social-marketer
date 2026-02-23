@@ -38,6 +38,8 @@
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="lastUsedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="linkString" optional="YES" attributeType="String"/>
+        <attribute name="postedImageCount" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="postedVideoCount" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="pubDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="reference" optional="YES" attributeType="String"/>
         <attribute name="title" optional="YES" attributeType="String"/>

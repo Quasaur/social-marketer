@@ -23,6 +23,8 @@ public class CachedWisdomEntry: NSManagedObject {
         self.pubDate = entry.pubDate
         self.fetchedAt = Date()
         self.usedCount = 0
+        self.postedImageCount = 0
+        self.postedVideoCount = 0
     }
     
     /// Computed property for link URL
@@ -41,6 +43,18 @@ public class CachedWisdomEntry: NSManagedObject {
     func markAsUsed() {
         usedCount += 1
         lastUsedAt = Date()
+    }
+    
+    /// Mark this entry as posted as an image
+    func markPostedAsImage() {
+        postedImageCount += 1
+        markAsUsed()
+    }
+    
+    /// Mark this entry as posted as a video
+    func markPostedAsVideo() {
+        postedVideoCount += 1
+        markAsUsed()
     }
 }
 
@@ -122,6 +136,8 @@ extension CachedWisdomEntry {
     @NSManaged public var fetchedAt: Date?
     @NSManaged public var usedCount: Int16
     @NSManaged public var lastUsedAt: Date?
+    @NSManaged public var postedImageCount: Int16
+    @NSManaged public var postedVideoCount: Int16
 }
 
 // MARK: - Identifiable

@@ -327,56 +327,78 @@ final class PostScheduler {
     }
     
     /// Auto-populates the Post Queue from RSS feed when empty.
-    /// Fetches entries from RSS and creates Post entities for each.
+    /// Schedules one post per day for subsequent days.
     private func autoPopulateQueueFromRSS() async {
         let context = PersistenceController.shared.viewContext
         
         do {
-            // Try to fetch from thoughts feed first (more variety)
             let rssParser = RSSParser()
             
-            // Fetch multiple entries to build up the queue
-            // Try thoughts feed first, fall back to daily
-            let entries = try await rssParser.fetchFeed(url: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml")
-                .shuffled() // Randomize to cycle through content
+            // Fetch from all feed types for maximum variety
+            var allEntries: [WisdomEntry] = []
             
-            guard !entries.isEmpty else {
-                // Fall back to daily feed
-                guard let dailyEntry = try await rssParser.fetchDaily() else {
-                    logger.warning("No entries available from RSS feeds")
-                    return
-                }
-                createPostFromEntry(dailyEntry, in: context)
-                PersistenceController.shared.save()
-                logger.info("Added 1 entry from daily feed to queue")
+            // Try thoughts feed
+            if let thoughtsURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml"),
+               let thoughts = try? await rssParser.fetchFeed(url: thoughtsURL) {
+                allEntries.append(contentsOf: thoughts)
+            }
+            
+            // Try quotes feed
+            if let quotesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/quotes.xml"),
+               let quotes = try? await rssParser.fetchFeed(url: quotesURL) {
+                allEntries.append(contentsOf: quotes)
+            }
+            
+            // Try passages feed
+            if let passagesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/passages.xml"),
+               let passages = try? await rssParser.fetchFeed(url: passagesURL) {
+                allEntries.append(contentsOf: passages)
+            }
+            
+            // Fall back to daily feed if others are empty
+            if allEntries.isEmpty, let daily = try? await rssParser.fetchDaily() {
+                allEntries.append(daily)
+            }
+            
+            guard !allEntries.isEmpty else {
+                logger.warning("No entries available from any RSS feeds")
                 return
             }
             
-            // Add up to 5 entries to the queue
-            let entriesToAdd = entries.prefix(5)
-            for entry in entriesToAdd {
-                createPostFromEntry(entry, in: context)
+            // Shuffle for variety, then schedule one per day
+            let shuffledEntries = allEntries.shuffled()
+            let entriesToAdd = shuffledEntries.prefix(5) // Up to 5 days worth
+            
+            let calendar = Calendar.current
+            let now = Date()
+            
+            for (index, entry) in entriesToAdd.enumerated() {
+                // Schedule for subsequent days (tomorrow, day after, etc.)
+                // First entry scheduled for today/now (if queue was empty)
+                // Subsequent entries scheduled for future days
+                let daysToAdd = index
+                let scheduledDate = calendar.date(byAdding: .day, value: daysToAdd, to: now) ?? now
+                createPostFromEntry(entry, scheduledFor: scheduledDate, in: context)
             }
             
             PersistenceController.shared.save()
-            logger.info("Added \(entriesToAdd.count) entries to queue from RSS")
+            logger.info("Added \(entriesToAdd.count) entries to queue (scheduled for next \(entriesToAdd.count) days)")
             
         } catch {
             logger.error("Failed to auto-populate queue: \(error.localizedDescription)")
         }
     }
     
-    /// Creates a Post entity from a WisdomEntry
-    private func createPostFromEntry(_ entry: WisdomEntry, in context: NSManagedObjectContext) {
+    /// Creates a Post entity from a WisdomEntry with specific schedule date
+    private func createPostFromEntry(_ entry: WisdomEntry, scheduledFor date: Date, in context: NSManagedObjectContext) {
         let post = Post(
             context: context,
             content: entry.content,
             imageURL: nil, // Will be generated at post time
             link: entry.link
         )
-        // Schedule for immediate posting (now)
-        post.scheduledDate = Date()
-        logger.debug("Created post from entry: \(entry.title ?? "Untitled")")
+        post.scheduledDate = date
+        logger.debug("Created post from entry: \(entry.title ?? "Untitled") scheduled for \(date)")
     }
     
     /// Post a single queued post to all enabled platforms — delegates to PlatformRouter
