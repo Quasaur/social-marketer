@@ -118,7 +118,7 @@ struct ErrorEntryRow: View {
                         .font(.body)
                         .lineLimit(isExpanded ? nil : 2)
                     
-                    Text(entry.timestamp, style: .relative)
+                    Text(entry.timestamp, format: Date.FormatStyle(date: .numeric, time: .shortened))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
