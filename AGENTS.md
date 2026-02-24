@@ -223,6 +223,32 @@ The Post Queue is now the single source of truth for posting:
 3. **Daily Scheduler**: Processes the due post from queue
 4. **Test Posts**: All Test Post/Pin buttons use the scheduled post for the day
 
+## Social Effects Integration
+
+### Video Generation API Request
+
+When generating videos, Social Marketer sends the following fields to Social Effects API:
+
+```json
+{
+  "title": "Content Title",
+  "content": "The actual content text...",
+  "content_type": "quote",  // thought, quote, or passage
+  "node_title": "Content_Title",
+  "source": "The Narrow Way",  // Book name (quotes) or Bible reference (passages)
+  "ping_pong": true
+}
+```
+
+**Source Field Behavior:**
+- **Quotes**: `source` = Book name (e.g., "The Narrow Way", "IMMMUNITY to the Lake of Fire")
+- **Passages**: `source` = Bible reference (e.g., "Proverbs 3:34", "John 3:16")
+- **Thoughts**: `source` = "" (empty string - no book/bible reference)
+
+**RSS Parsing Optimization:**
+- `extractBookName()` is only called for Quotes and Passages when `wisdom:source` is missing
+- Thoughts skip this expensive regex call (they don't have book references)
+
 ## Testing
 
 ### Test Posts

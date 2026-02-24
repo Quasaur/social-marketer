@@ -144,6 +144,8 @@ YouTube requires these fields for public uploads:
 6. **Smart Test Post Auto-Populate** - Test posts auto-fill empty queue WITHOUT posting to all platforms
 7. **Strict Media Preferences** - No fallbacks (video preference + no video = error in Recent Errors)
 8. **OAuth Port Fix** - Changed from 5390 to unique ports (9090-9094) to avoid Social Effects conflict
+9. **RSS Parsing Optimization** - Skip expensive extractBookName() for Thoughts (no book references)
+10. **Social Effects Attribution** - Send book name (quotes) and Bible reference (passages) to Social Effects API
 
 ### Technical Improvements (v2.2)
 
@@ -153,6 +155,8 @@ YouTube requires these fields for public uploads:
 - **Test Post Auto-Populate:** `getScheduledPostForToday()` now calls `autoPopulateQueueFromRSS()` when queue is empty
 - **Video Preference Enforcement:** Removed all video-to-image fallbacks
 - **RSS Feed Integration:** Auto-populates from thoughts, quotes, passages feeds
+- **RSS Optimization:** `extractBookName()` only called for Quotes and Passages (not Thoughts)
+- **Social Effects API:** Added `source` field to video generation request (book name or Bible reference)
 - **Build Version:** Updated to v2.2 (Build 2)
 
 ### Previous Achievements (v1.x)
