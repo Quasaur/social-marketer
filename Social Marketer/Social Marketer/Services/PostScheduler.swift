@@ -332,6 +332,8 @@ final class PostScheduler {
     func autoPopulateQueueFromRSS() async {
         let context = PersistenceController.shared.viewContext
         
+        print("[AUTO-POPULATE] Starting RSS feed fetch...")
+        
         do {
             let rssParser = RSSParser()
             
@@ -339,26 +341,42 @@ final class PostScheduler {
             var allEntries: [WisdomEntry] = []
             
             // Try thoughts feed
+            print("[AUTO-POPULATE] Fetching thoughts feed...")
             if let thoughtsURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml"),
                let thoughts = try? await rssParser.fetchFeed(url: thoughtsURL) {
+                print("[AUTO-POPULATE] Thoughts feed: \(thoughts.count) entries")
                 allEntries.append(contentsOf: thoughts)
+            } else {
+                print("[AUTO-POPULATE] Thoughts feed: failed or empty")
             }
             
             // Try quotes feed
+            print("[AUTO-POPULATE] Fetching quotes feed...")
             if let quotesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/quotes.xml"),
                let quotes = try? await rssParser.fetchFeed(url: quotesURL) {
+                print("[AUTO-POPULATE] Quotes feed: \(quotes.count) entries")
                 allEntries.append(contentsOf: quotes)
+            } else {
+                print("[AUTO-POPULATE] Quotes feed: failed or empty")
             }
             
             // Try passages feed
+            print("[AUTO-POPULATE] Fetching passages feed...")
             if let passagesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/passages.xml"),
                let passages = try? await rssParser.fetchFeed(url: passagesURL) {
+                print("[AUTO-POPULATE] Passages feed: \(passages.count) entries")
                 allEntries.append(contentsOf: passages)
+            } else {
+                print("[AUTO-POPULATE] Passages feed: failed or empty")
             }
             
             // Fall back to daily feed if others are empty
-            if allEntries.isEmpty, let daily = try? await rssParser.fetchDaily() {
-                allEntries.append(daily)
+            if allEntries.isEmpty {
+                print("[AUTO-POPULATE] All feeds empty, trying daily feed...")
+                if let daily = try? await rssParser.fetchDaily() {
+                    print("[AUTO-POPULATE] Daily feed: 1 entry")
+                    allEntries.append(daily)
+                }
             }
             
             guard !allEntries.isEmpty else {
@@ -384,9 +402,11 @@ final class PostScheduler {
             
             PersistenceController.shared.save()
             logger.info("Added \(entriesToAdd.count) entries to queue (scheduled for next \(entriesToAdd.count) days)")
+            print("[AUTO-POPULATE] Complete: Added \(entriesToAdd.count) entries to queue")
             
         } catch {
             logger.error("Failed to auto-populate queue: \(error.localizedDescription)")
+            print("[AUTO-POPULATE] Failed: \(error.localizedDescription)")
         }
     }
     

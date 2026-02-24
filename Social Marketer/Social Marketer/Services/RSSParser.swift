@@ -107,13 +107,26 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         self.data = data
     }
     
+    // Statistics for debugging
+    private var stats_totalEntries = 0
+    private var stats_hasWisdomSource = 0
+    private var stats_usedExtractBookName = 0
+    
     func parse() throws -> [WisdomEntry] {
         if Log.isDebugMode {
             Log.debug("XMLParser.parse() starting...", category: "RSS")
         }
+        stats_totalEntries = 0
+        stats_hasWisdomSource = 0
+        stats_usedExtractBookName = 0
+        
         let parser = XMLParser(data: data)
         parser.delegate = self
         parser.parse()
+        
+        // Log statistics
+        print("[RSS STATS] Total entries: \(stats_totalEntries), Has wisdom:source: \(stats_hasWisdomSource), Used extractBookName: \(stats_usedExtractBookName)")
+        
         if Log.isDebugMode {
             Log.debug("XMLParser.parse() completed, \(entries.count) entries", category: "RSS")
         }
@@ -161,6 +174,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         guard elementName == "item" else { return }
         isInsideItem = false
         
+        stats_totalEntries += 1
         print("[DEBUG] Processing item #\(entries.count + 1)...")
         
         // Parse category
@@ -181,6 +195,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         let wisdomSource = currentWisdomSource.trimmingCharacters(in: .whitespacesAndNewlines)
         if !wisdomSource.isEmpty {
             reference = wisdomSource
+            stats_hasWisdomSource += 1
         }
         
         // 2. Fallback: titles may contain reference after " - " (legacy format)
@@ -194,12 +209,13 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         
         // 3. Fallback: extract book name from <em> tag (standalone, not "Parent Topic")
         if reference == nil {
+            stats_usedExtractBookName += 1
             if Log.isDebugMode {
-                Log.debug("Calling extractBookName...", category: "RSS")
+                Log.debug("Calling extractBookName for item #\(stats_totalEntries)...", category: "RSS")
             }
             reference = extractBookName(from: currentContent)
             if Log.isDebugMode {
-                Log.debug("extractBookName done", category: "RSS")
+                Log.debug("extractBookName done for item #\(stats_totalEntries)", category: "RSS")
             }
         }
         
