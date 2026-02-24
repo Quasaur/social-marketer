@@ -17,7 +17,7 @@ struct ContentView: View {
                 Section("Overview") {
                     Label("Dashboard", systemImage: "gauge.with.dots.needle.bottom.50percent")
                         .tag("dashboard")
-                    Label("Content", systemImage: "doc.text")
+                    Label("Post History", systemImage: "clock.arrow.circlepath")
                         .tag("content")
                     Label("Post Queue", systemImage: "tray.and.arrow.up")
                         .tag("queue")

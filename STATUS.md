@@ -141,14 +141,16 @@ YouTube requires these fields for public uploads:
 3. **Image/Video Post Tracking** - Per-content-item stats showing 📷 (image) / 🎬 (video) counts
 4. **Auto-Population** - Queue automatically fills from RSS when empty (one post per day)
 5. **Test Posts Using Scheduled Content** - All Test Post/Pin buttons use scheduled post from queue
-6. **Strict Media Preferences** - No fallbacks (video preference + no video = error in Recent Errors)
-7. **OAuth Port Fix** - Changed from 5390 to unique ports (9090-9094) to avoid Social Effects conflict
+6. **Smart Test Post Auto-Populate** - Test posts auto-fill empty queue WITHOUT posting to all platforms
+7. **Strict Media Preferences** - No fallbacks (video preference + no video = error in Recent Errors)
+8. **OAuth Port Fix** - Changed from 5390 to unique ports (9090-9094) to avoid Social Effects conflict
 
 ### Technical Improvements (v2.2)
 
 - **Queue-Driven Workflow:** `processQueue()` now auto-populates and processes scheduled posts
 - **Content Library Stats:** `postedImageCount` and `postedVideoCount` in Core Data
 - **Test Post Unification:** All platforms use `getScheduledPostForToday()` helper
+- **Test Post Auto-Populate:** `getScheduledPostForToday()` now calls `autoPopulateQueueFromRSS()` when queue is empty
 - **Video Preference Enforcement:** Removed all video-to-image fallbacks
 - **RSS Feed Integration:** Auto-populates from thoughts, quotes, passages feeds
 - **Build Version:** Updated to v2.2 (Build 2)
@@ -207,6 +209,7 @@ No build-time configuration required. All settings are runtime:
 - [x] Content Library with image/video tracking
 - [x] One post per day scheduling
 - [x] Test Posts use scheduled content (all platforms)
+- [x] Test Posts auto-populate queue (without posting to all platforms)
 - [x] Strict media preference enforcement
 - [x] OAuth port conflicts resolved
 

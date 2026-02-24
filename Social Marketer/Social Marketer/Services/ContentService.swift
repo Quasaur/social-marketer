@@ -2,13 +2,13 @@
 //  ContentService.swift
 //  SocialMarketer
 //
-//  Orchestrates content fetching, caching, and retrieval from RSS feeds
+//  Service for managing post history and content retrieval
 //
 
 import Foundation
 import CoreData
 
-/// Service for managing wisdom content from RSS feeds
+/// Service for managing wisdom content and post history
 actor ContentService: ContentServiceProtocol {
     
     // MARK: - Singleton
@@ -21,46 +21,6 @@ actor ContentService: ContentServiceProtocol {
     private let logger = Log.content
     
     // MARK: - Public Methods
-    
-    /// Refresh content from ALL RSS feeds (thoughts, quotes, passages)
-    /// Returns the count of new entries added
-    @discardableResult
-    func refreshContent() async throws -> Int {
-        let startTime = Date()
-        logger.info("Refreshing content from all RSS feeds...")
-        
-        var allEntries: [WisdomEntry] = []
-        var totalFetched = 0
-        
-        // Fetch from all feed types for complete Content Library
-        let feedTypes = ["thoughts", "quotes", "passages", "daily"]
-        
-        for feedType in feedTypes {
-            guard let feedURL = RSSParser.feedURLs[feedType] else { continue }
-            
-            do {
-                let entries = try await rssParser.fetchFeed(url: feedURL)
-                allEntries.append(contentsOf: entries)
-                totalFetched += entries.count
-                logger.info("Fetched \(entries.count) entries from \(feedType) feed")
-            } catch {
-                logger.warning("Failed to fetch \(feedType) feed: \(error.localizedDescription)")
-            }
-        }
-        
-        logger.info("Total fetched: \(totalFetched) entries from all feeds")
-        
-        // Cache entries on main actor (Core Data requirement)
-        let cacheStart = Date()
-        let newCount = await cacheEntries(allEntries)
-        let cacheTime = Date().timeIntervalSince(cacheStart)
-        logger.info("Cached \(newCount) new entries in \(String(format: "%.2f", cacheTime))s")
-        
-        let totalTime = Date().timeIntervalSince(startTime)
-        logger.info("Total refresh time: \(String(format: "%.2f", totalTime))s")
-        
-        return newCount
-    }
     
     /// Fetch the daily wisdom entry
     func fetchDaily() async throws -> WisdomEntry? {
@@ -84,51 +44,47 @@ actor ContentService: ContentServiceProtocol {
         }
     }
     
-    // MARK: - Private Methods
-    
-    @MainActor
-    private func cacheEntries(_ entries: [WisdomEntry]) -> Int {
-        let context = PersistenceController.shared.viewContext
-        var newCount = 0
-        
-        // Batch fetch all existing entries by link (single query instead of 50!)
-        let linkStrings = entries.map { $0.link.absoluteString }
-        let request = CachedWisdomEntry.fetchRequest()
-        request.predicate = NSPredicate(format: "linkString IN %@", linkStrings)
-        
-        let existingEntries: [CachedWisdomEntry]
-        do {
-            existingEntries = try context.fetch(request)
-        } catch {
-            logger.error("Failed to fetch existing entries: \(error.localizedDescription)")
-            existingEntries = []
-        }
-        
-        // Build lookup dictionary for O(1) access
-        let existingByLink: [String: CachedWisdomEntry] = Dictionary(uniqueKeysWithValues: existingEntries.compactMap { entry in
-            guard let link = entry.linkString else { return nil }
-            return (link, entry)
-        })
-        
-        for entry in entries {
-            let linkString = entry.link.absoluteString
-            if let existing = existingByLink[linkString] {
-                // Update existing entry content (picks up improved cleaning)
-                existing.title = entry.title
-                existing.content = entry.content
-                existing.reference = entry.reference
-                continue
+    /// Fetch post history entries (content that has been posted)
+    /// - Parameter limit: Maximum number of entries to fetch (0 for unlimited)
+    /// - Returns: Array of posted content entries, sorted by most recently posted
+    func fetchPostHistory(limit: Int = 0) async -> [CachedWisdomEntry] {
+        return await MainActor.run {
+            let context = PersistenceController.shared.viewContext
+            let request = CachedWisdomEntry.fetchRequest()
+            request.predicate = NSPredicate(format: "usedCount > 0")
+            request.sortDescriptors = [NSSortDescriptor(keyPath: \CachedWisdomEntry.lastUsedAt, ascending: false)]
+            if limit > 0 {
+                request.fetchLimit = limit
             }
             
-            // Create new cached entry
-            let _ = CachedWisdomEntry(context: context, from: entry)
-            newCount += 1
+            do {
+                return try context.fetch(request)
+            } catch {
+                logger.error("Failed to fetch post history: \(error.localizedDescription)")
+                return []
+            }
         }
-        
-        // Always save (updates existing + inserts new)
-        PersistenceController.shared.save()
-        
-        return newCount
+    }
+    
+    /// Get total post counts across all history
+    /// - Returns: Tuple of (image posts, video posts, total posts)
+    func getTotalPostCounts() async -> (images: Int, videos: Int, total: Int) {
+        return await MainActor.run {
+            let context = PersistenceController.shared.viewContext
+            let request = CachedWisdomEntry.fetchRequest()
+            request.predicate = NSPredicate(format: "usedCount > 0")
+            
+            do {
+                let entries = try context.fetch(request)
+                let totalImages = entries.reduce(0) { $0 + Int($1.postedImageCount) }
+                let totalVideos = entries.reduce(0) { $0 + Int($1.postedVideoCount) }
+                let totalPosts = entries.reduce(0) { $0 + Int($1.usedCount) }
+                return (totalImages, totalVideos, totalPosts)
+            } catch {
+                logger.error("Failed to fetch post counts: \(error.localizedDescription)")
+                return (0, 0, 0)
+            }
+        }
     }
 }
 

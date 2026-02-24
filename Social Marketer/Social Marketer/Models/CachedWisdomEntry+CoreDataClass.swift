@@ -2,16 +2,18 @@
 //  CachedWisdomEntry+CoreDataClass.swift
 //  SocialMarketer
 //
-//  Core Data entity for cached RSS wisdom entries
+//  Core Data entity for posted content history (formerly Content Library)
 //
 
 import Foundation
 import CoreData
 
+/// Posted Content History entry
+/// Tracks content that has been posted to platforms with image/video counts
 @objc(CachedWisdomEntry)
 public class CachedWisdomEntry: NSManagedObject {
     
-    /// Convenience initializer from WisdomEntry
+    /// Convenience initializer from WisdomEntry (when creating from queue post)
     convenience init(context: NSManagedObjectContext, from entry: WisdomEntry) {
         self.init(context: context)
         self.id = entry.id
@@ -21,6 +23,20 @@ public class CachedWisdomEntry: NSManagedObject {
         self.linkString = entry.link.absoluteString
         self.category = entry.category.rawValue
         self.pubDate = entry.pubDate
+        self.fetchedAt = Date()
+        self.usedCount = 0
+        self.postedImageCount = 0
+        self.postedVideoCount = 0
+    }
+    
+    /// Convenience initializer for manual/posted content
+    convenience init(context: NSManagedObjectContext, title: String?, content: String?, link: URL, category: WisdomEntry.WisdomCategory = .thought) {
+        self.init(context: context)
+        self.id = UUID()
+        self.title = title
+        self.content = content
+        self.linkString = link.absoluteString
+        self.category = category.rawValue
         self.fetchedAt = Date()
         self.usedCount = 0
         self.postedImageCount = 0
@@ -66,10 +82,11 @@ extension CachedWisdomEntry {
         return NSFetchRequest<CachedWisdomEntry>(entityName: "CachedWisdomEntry")
     }
     
-    /// Fetch all cached entries sorted by publication date
-    static func fetchAll(in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
+    /// Fetch all posted content sorted by last posted date (most recent first)
+    static func fetchAllPosted(in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
         let request = fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \CachedWisdomEntry.pubDate, ascending: false)]
+        request.predicate = NSPredicate(format: "usedCount > 0")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \CachedWisdomEntry.lastUsedAt, ascending: false)]
         
         do {
             return try context.fetch(request)
@@ -78,11 +95,11 @@ extension CachedWisdomEntry {
         }
     }
     
-    /// Fetch entries by category
-    static func fetch(category: WisdomEntry.WisdomCategory, in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
+    /// Fetch posted entries by category
+    static func fetchPosted(category: WisdomEntry.WisdomCategory, in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
         let request = fetchRequest()
-        request.predicate = NSPredicate(format: "category == %@", category.rawValue)
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \CachedWisdomEntry.pubDate, ascending: false)]
+        request.predicate = NSPredicate(format: "category == %@ AND usedCount > 0", category.rawValue)
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \CachedWisdomEntry.lastUsedAt, ascending: false)]
         
         do {
             return try context.fetch(request)
@@ -105,12 +122,13 @@ extension CachedWisdomEntry {
     }
     
     /// Fetch least-used entries for intelligent selection (excludes Introduction posts)
+    /// Note: This may include entries not yet in history (usedCount = 0)
     static func fetchLeastUsed(limit: Int = 10, in context: NSManagedObjectContext) -> [CachedWisdomEntry] {
         let request = fetchRequest()
         request.predicate = NSPredicate(format: "category != %@", WisdomEntry.WisdomCategory.introduction.rawValue)
         request.sortDescriptors = [
             NSSortDescriptor(keyPath: \CachedWisdomEntry.usedCount, ascending: true),
-            NSSortDescriptor(keyPath: \CachedWisdomEntry.pubDate, ascending: false)
+            NSSortDescriptor(keyPath: \CachedWisdomEntry.fetchedAt, ascending: false)
         ]
         request.fetchLimit = limit
         
@@ -132,12 +150,12 @@ extension CachedWisdomEntry {
     @NSManaged public var reference: String?
     @NSManaged public var linkString: String?
     @NSManaged public var category: String?
-    @NSManaged public var pubDate: Date?
-    @NSManaged public var fetchedAt: Date?
-    @NSManaged public var usedCount: Int16
-    @NSManaged public var lastUsedAt: Date?
-    @NSManaged public var postedImageCount: Int16
-    @NSManaged public var postedVideoCount: Int16
+    @NSManaged public var pubDate: Date?      // Original publication date (if from RSS)
+    @NSManaged public var fetchedAt: Date?    // When this entry was first added
+    @NSManaged public var usedCount: Int16    // Total number of times posted
+    @NSManaged public var lastUsedAt: Date?   // Most recent post date
+    @NSManaged public var postedImageCount: Int16  // Number of image posts
+    @NSManaged public var postedVideoCount: Int16  // Number of video posts
 }
 
 // MARK: - Identifiable

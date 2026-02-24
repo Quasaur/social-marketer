@@ -10,8 +10,21 @@ import SwiftUI
 extension PlatformSettingsView {
     
     /// Get the first pending post (scheduled post for the day)
+    /// Auto-populates the queue from RSS if empty (for test posts)
     func getFirstPendingPost() async -> Post? {
         let context = PersistenceController.shared.viewContext
+        
+        // Check if queue is empty and auto-populate if needed
+        let pendingCount = await context.perform {
+            Post.fetchPending(in: context).count
+        }
+        
+        if pendingCount == 0 {
+            print("📬 Queue is empty - auto-populating from RSS for test post...")
+            let scheduler = PostScheduler()
+            await scheduler.autoPopulateQueueFromRSS()
+        }
+        
         return await context.perform {
             let pending = Post.fetchPending(in: context)
             let now = Date()
@@ -25,8 +38,21 @@ extension PlatformSettingsView {
     }
     
     /// Get the scheduled post for today (due post)
+    /// Auto-populates the queue from RSS if empty (for test posts)
     func getScheduledPostForToday() async -> Post? {
         let context = PersistenceController.shared.viewContext
+        
+        // Check if queue is empty and auto-populate if needed
+        let pendingCount = await context.perform {
+            Post.fetchPending(in: context).count
+        }
+        
+        if pendingCount == 0 {
+            print("📬 Queue is empty - auto-populating from RSS for test post...")
+            let scheduler = PostScheduler()
+            await scheduler.autoPopulateQueueFromRSS()
+        }
+        
         return await context.perform {
             let pending = Post.fetchPending(in: context)
             let now = Date()

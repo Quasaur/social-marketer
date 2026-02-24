@@ -43,11 +43,11 @@ This file provides context for AI assistants and developers working on the Socia
 
 ### Data Flow
 
-1. **Content Ingestion**: RSS fetch → Content Library (`CachedWisdomEntry`)
-2. **Queue Population**: RSS entries → Post Queue (`Post` entity, one per day)
-3. **Video Generation**: WisdomEntry → Social Effects → MP4 file
-4. **Posting**: Post + Video → PlatformRouter → Connector APIs
-5. **Logging**: All operations → ErrorLog + PostLog + Content Library stats (image/video counts)
+1. **Queue Population**: RSS feeds → Post Queue (`Post` entity, one per day)
+2. **Video Generation**: WisdomEntry → Social Effects → MP4 file
+3. **Posting**: Post + Video → PlatformRouter → Connector APIs
+4. **History Tracking**: Posted content → Post History (`CachedWisdomEntry`) with image/video counts
+5. **Logging**: All operations → ErrorLog + PostLog
 
 ### Social Effects Server Lifecycle
 
@@ -199,13 +199,21 @@ let videoPath = AppConfiguration.Paths.videoStorage
 - Configuration overrides → **UserDefaults** (optional)
 - Core Data → posts, logs, and cached content
 
-### Content Library
+### Post History
 
-The Content Library caches ALL Thoughts, Quotes, and Passages from RSS feeds:
-- **Refresh** button fetches from all RSS feeds (thoughts, quotes, passages)
-- Each item shows post history: 📷 (image count) / 🎬 (video count)
-- **Generate Graphic** button allows preview and manual posting
-- Content persists across app restarts
+The Post History tracks all content that has been posted to platforms:
+- **Posted-only**: Only content that has been successfully posted appears here
+- **Image/Video tracking**: Each item shows 📷 (image count) / 🎬 (video count)
+- **Sorted by recency**: Most recently posted content appears first
+- **Persistent**: Post history persists across app restarts
+- **Generate Graphic**: Button allows regenerating graphics from history entries
+
+**How it works:**
+```
+Post to Platforms → PlatformRouter updates/creates CachedWisdomEntry
+                              ↓
+                    Updates: postedImageCount / postedVideoCount / lastUsedAt
+```
 
 ### Queue-Driven Posting
 
@@ -220,10 +228,23 @@ The Post Queue is now the single source of truth for posting:
 ### Test Posts
 
 All Test Post/Pin buttons use the scheduled post from the queue:
-- **Content Source**: First pending post from Post Queue
+- **Content Source**: First pending post from Post Queue (auto-populates from RSS if empty)
 - **Media**: Respects Preferred Media Preferences (image/video)
 - **Error Handling**: Failures logged to Recent Errors (no fallback to other media types)
 - **Platforms**: Twitter, LinkedIn, Facebook, Instagram, Pinterest, YouTube
+- **Auto-Populate**: If queue is empty, test posts automatically populate it WITHOUT posting to all platforms
+
+**Implementation:**
+```swift
+// Test posts auto-populate queue if empty
+func getScheduledPostForToday() async -> Post? {
+    // Check if queue is empty and auto-populate if needed
+    if pendingCount == 0 {
+        await scheduler.autoPopulateQueueFromRSS()
+    }
+    // Return first pending post
+}
+```
 
 ### Health Checks
 
@@ -278,4 +299,4 @@ Dashboard's External Connections panel shows:
 
 ---
 
-Last Updated: February 21, 2026
+Last Updated: February 23, 2026

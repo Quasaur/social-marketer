@@ -328,7 +328,8 @@ final class PostScheduler {
     
     /// Auto-populates the Post Queue from RSS feed when empty.
     /// Schedules one post per day for subsequent days.
-    private func autoPopulateQueueFromRSS() async {
+    /// This is public so test post buttons can populate the queue without posting to all platforms.
+    func autoPopulateQueueFromRSS() async {
         let context = PersistenceController.shared.viewContext
         
         do {

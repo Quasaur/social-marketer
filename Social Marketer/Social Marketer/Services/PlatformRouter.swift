@@ -231,45 +231,110 @@ final class PlatformRouter {
         postRecord.postStatus = anySuccess ? .posted : .failed
         postRecord.postedDate = anySuccess ? Date() : nil
         
-        // Update Content Library stats if we have a link to match
-        if anySuccess, let linkString = link.absoluteString as String? {
-            if let cachedEntry = CachedWisdomEntry.findByLink(linkString, in: context) {
-                // Track what we posted for stats
-                for platform in enabledPlatforms {
-                    let platformName = platform.name ?? ""
-                    let platformPrefersVideo = platform.prefersVideo
-                    let canUseVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
-                    let disableVideoForPlatform = (platformName == "X (Twitter)" || platformName == "Facebook")
-                    
-                    let useVideo: Bool
-                    if platformName == "Instagram" || platformName == "TikTok" {
-                        useVideo = canUseVideo && platformPrefersVideo
-                    } else {
-                        useVideo = canUseVideo && !disableVideoForPlatform
-                    }
-                    
-                    if useVideo {
-                        postedAnyVideo = true
-                    } else if !disableVideoForPlatform && platformName != "YouTube" {
-                        postedAnyImage = true
-                    }
-                }
-                
-                // Update the cached entry counters
-                if postedAnyVideo {
-                    cachedEntry.markPostedAsVideo()
-                } else if postedAnyImage {
-                    cachedEntry.markPostedAsImage()
-                } else {
-                    cachedEntry.markAsUsed()
-                }
-                logger.debug("Updated Content Library stats for entry: \(cachedEntry.title ?? "Untitled")")
-            }
+        // Update Post History if any platforms succeeded
+        if anySuccess {
+            updatePostHistory(
+                post: postRecord,
+                link: link,
+                videoURL: videoURL,
+                platforms: enabledPlatforms,
+                context: context
+            )
         }
         
         PersistenceController.shared.save()
         logger.info("Post results saved — \(anySuccess ? "at least one platform succeeded" : "all platforms failed")")
         
         return (successCount, failureCount, errorMessages)
+    }
+    
+    // MARK: - Post History Tracking
+    
+    /// Update the Post History (CachedWisdomEntry) for posted content
+    /// Creates new entry if not exists, updates stats if exists
+    private func updatePostHistory(
+        post: Post,
+        link: URL,
+        videoURL: URL?,
+        platforms: [Platform],
+        context: NSManagedObjectContext
+    ) {
+        let linkString = link.absoluteString
+        
+        // Find existing entry or create new one
+        let historyEntry: CachedWisdomEntry
+        if let existing = CachedWisdomEntry.findByLink(linkString, in: context) {
+            historyEntry = existing
+        } else {
+            // Create new history entry from post data
+            historyEntry = CachedWisdomEntry(context: context)
+            historyEntry.id = UUID()
+            historyEntry.linkString = linkString
+            historyEntry.title = deriveTitle(from: post)
+            historyEntry.content = post.content
+            historyEntry.category = WisdomEntry.WisdomCategory.thought.rawValue
+            historyEntry.fetchedAt = Date()
+            historyEntry.usedCount = 0
+            historyEntry.postedImageCount = 0
+            historyEntry.postedVideoCount = 0
+            logger.debug("Created new Post History entry: \(historyEntry.title ?? "Untitled")")
+        }
+        
+        // Determine what media types were posted
+        var postedImage = false
+        var postedVideo = false
+        
+        for platform in platforms {
+            let platformName = platform.name ?? ""
+            let platformPrefersVideo = platform.prefersVideo
+            let canUseVideo = (videoURL != nil) && (platformName == "YouTube" || platformName == "TikTok" || platformName == "Instagram")
+            let disableVideoForPlatform = (platformName == "X (Twitter)" || platformName == "Facebook")
+            
+            let useVideo: Bool
+            if platformName == "Instagram" || platformName == "TikTok" {
+                useVideo = canUseVideo && platformPrefersVideo
+            } else {
+                useVideo = canUseVideo && !disableVideoForPlatform
+            }
+            
+            if useVideo {
+                postedVideo = true
+            } else if !disableVideoForPlatform && platformName != "YouTube" {
+                postedImage = true
+            }
+        }
+        
+        // Update counters
+        if postedVideo {
+            historyEntry.markPostedAsVideo()
+        } else if postedImage {
+            historyEntry.markPostedAsImage()
+        } else {
+            historyEntry.markAsUsed()
+        }
+        
+        logger.debug("Updated Post History for: \(historyEntry.title ?? "Untitled") - Images: \(historyEntry.postedImageCount), Videos: \(historyEntry.postedVideoCount)")
+    }
+    
+    /// Derive a title from post content (first line or first 60 chars)
+    private func deriveTitle(from post: Post) -> String? {
+        guard let content = post.content else { return nil }
+        
+        // Try to get first line
+        let firstLine = content.split(separator: "\n", omittingEmptySubsequences: true).first
+        if let line = firstLine {
+            let title = String(line).trimmingCharacters(in: .whitespaces)
+            // Limit to 60 chars for readability
+            if title.count > 60 {
+                return String(title.prefix(60)) + "..."
+            }
+            return title
+        }
+        
+        // Fallback: first 60 chars of content
+        if content.count > 60 {
+            return String(content.prefix(60)) + "..."
+        }
+        return content
     }
 }

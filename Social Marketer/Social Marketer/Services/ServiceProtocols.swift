@@ -64,10 +64,20 @@ protocol SocialEffectsServiceProtocol {
 // MARK: - Content Service Protocol
 
 protocol ContentServiceProtocol {
-    func refreshContent() async throws -> Int
+    /// Fetch the daily wisdom entry from RSS
     func fetchDaily() async throws -> WisdomEntry?
+    
+    /// Get a random entry for posting (from least-used pool)
     func getNextEntryForPosting() async -> CachedWisdomEntry?
+    
+    /// Mark an entry as posted (increments usage counters)
     func markAsPosted(_ entry: CachedWisdomEntry) async
+    
+    /// Fetch post history entries (posted content only)
+    func fetchPostHistory(limit: Int) async -> [CachedWisdomEntry]
+    
+    /// Get total post counts across all history
+    func getTotalPostCounts() async -> (images: Int, videos: Int, total: Int)
 }
 
 // MARK: - Test Post Service Protocol

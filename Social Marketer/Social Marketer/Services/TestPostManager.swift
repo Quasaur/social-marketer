@@ -51,8 +51,21 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
     // MARK: - Test Post Methods
     
     /// Get the scheduled post for today from the queue
+    /// Auto-populates the queue from RSS if empty (for test posts)
     private func getScheduledPost() async -> Post? {
         let context = PersistenceController.shared.viewContext
+        
+        // Check if queue is empty and auto-populate if needed
+        let pendingCount = await context.perform {
+            Post.fetchPending(in: context).count
+        }
+        
+        if pendingCount == 0 {
+            ErrorLog.shared.log(category: "TestPost", message: "Queue empty - populating from RSS", detail: nil)
+            let scheduler = PostScheduler()
+            await scheduler.autoPopulateQueueFromRSS()
+        }
+        
         return await context.perform {
             let pending = Post.fetchPending(in: context)
             let now = Date()

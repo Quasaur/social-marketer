@@ -154,13 +154,17 @@ Manage your content pipeline:
 
 All **Test Post** and **Test Pin** buttons use the scheduled post for the day:
 
-1. Ensure you have content in the **Post Queue** (refresh Content Library if empty)
-2. Go to **Platform Settings**
-3. Click **"Test Post"** or **"Test Pin"** next to any platform
-4. The scheduled content will be posted with your preferred media settings (image/video)
+1. Go to **Platform Settings**
+2. Click **"Test Post"** or **"Test Pin"** next to any platform
+3. If the Post Queue is empty, it will **auto-populate from RSS feeds** automatically
+4. The scheduled content will be posted **only to the tested platform** (not all platforms)
 5. Check **Dashboard → Recent Errors** for any errors
 
-**Note**: Platforms set to video preference will fail if video generation fails (no fallback to image). Errors are logged for troubleshooting.
+**Key Behaviors:**
+- ✅ **Auto-populate**: Empty queue automatically fills from RSS when testing
+- ✅ **Single-platform**: Test posts only post to the platform being tested
+- ✅ **No fallbacks**: Platforms set to video preference will fail if video generation fails
+- ✅ **Safe testing**: Won't trigger posts to all platforms like Manual Post does
 
 ### Social Effects Status
 

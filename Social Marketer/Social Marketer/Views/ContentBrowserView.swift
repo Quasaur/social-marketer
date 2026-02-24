@@ -2,59 +2,56 @@
 //  ContentBrowserView.swift
 //  SocialMarketer
 //
-//  Browse and select wisdom entries from the RSS feed cache
+//  Post History - displays posted content with image/video tracking
 //
 
 import SwiftUI
 
 struct ContentBrowserView: View {
     @Environment(\.managedObjectContext) private var viewContext
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \CachedWisdomEntry.pubDate, ascending: false)],
-        animation: .default
-    ) private var entries: FetchedResults<CachedWisdomEntry>
     
-    @State private var isRefreshing = false
+    // Fetch only posted content, sorted by most recently posted first
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \CachedWisdomEntry.lastUsedAt, ascending: false)],
+        predicate: NSPredicate(format: "usedCount > 0"),
+        animation: .default
+    ) private var historyEntries: FetchedResults<CachedWisdomEntry>
+    
     @State private var selectedCategory: WisdomEntry.WisdomCategory? = nil
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var selectedEntry: CachedWisdomEntry? = nil
-    
-    private let contentService = ContentService.shared
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Content Library")
+                    Text("Post History")
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text("\(filteredEntries.count) entries")
+                    Text("\(filteredEntries.count) posted")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 
                 Spacer()
                 
-                // Refresh Button
-                Button(action: refreshContent) {
-                    if isRefreshing {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
+                // Total stats
+                HStack(spacing: 16) {
+                    Label("\(totalImagePosts)", systemImage: "photo.fill")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                    Label("\(totalVideoPosts)", systemImage: "video.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
-                .buttonStyle(.bordered)
-                .disabled(isRefreshing)
             }
             .padding()
             
             // Category Filter
             Picker("Category", selection: $selectedCategory) {
                 Text("All").tag(nil as WisdomEntry.WisdomCategory?)
-                Text("Introduction").tag(WisdomEntry.WisdomCategory.introduction as WisdomEntry.WisdomCategory?)
                 Text("Thoughts").tag(WisdomEntry.WisdomCategory.thought as WisdomEntry.WisdomCategory?)
                 Text("Quotes").tag(WisdomEntry.WisdomCategory.quote as WisdomEntry.WisdomCategory?)
                 Text("Passages").tag(WisdomEntry.WisdomCategory.passage as WisdomEntry.WisdomCategory?)
@@ -70,7 +67,7 @@ struct ContentBrowserView: View {
                 emptyState
             } else {
                 List(filteredEntries) { entry in
-                    ContentEntryRow(entry: entry)
+                    HistoryEntryRow(entry: entry)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             selectedEntry = entry
@@ -80,18 +77,12 @@ struct ContentBrowserView: View {
             }
         }
         .sheet(item: $selectedEntry) { entry in
-            ContentDetailSheet(entry: entry)
+            HistoryDetailSheet(entry: entry)
         }
-        .alert("Content Library", isPresented: $showingAlert) {
+        .alert("Post History", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
-        }
-        .onAppear {
-            // Auto-refresh if the library is empty (first launch)
-            if entries.isEmpty {
-                refreshContent()
-            }
         }
     }
     
@@ -99,9 +90,17 @@ struct ContentBrowserView: View {
     
     private var filteredEntries: [CachedWisdomEntry] {
         guard let category = selectedCategory else {
-            return Array(entries)
+            return Array(historyEntries)
         }
-        return entries.filter { $0.wisdomCategory == category }
+        return historyEntries.filter { $0.wisdomCategory == category }
+    }
+    
+    private var totalImagePosts: Int {
+        historyEntries.reduce(0) { $0 + Int($1.postedImageCount) }
+    }
+    
+    private var totalVideoPosts: Int {
+        historyEntries.reduce(0) { $0 + Int($1.postedVideoCount) }
     }
     
     // MARK: - Views
@@ -109,54 +108,25 @@ struct ContentBrowserView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "doc.text.magnifyingglass")
+            Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("No Entries Yet")
+            Text("No Posted Content Yet")
                 .font(.headline)
-            Text("Tap Refresh to fetch wisdom content from wisdombook.life")
+            Text("Content will appear here after it's posted to your platforms")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Refresh Now") {
-                refreshContent()
-            }
-            .buttonStyle(.borderedProminent)
+                .frame(maxWidth: 280)
             Spacer()
         }
         .padding()
-    }
-    
-    // MARK: - Actions
-    
-    private func refreshContent() {
-        isRefreshing = true
-        Task {
-            do {
-                let newCount = try await contentService.refreshContent()
-                await MainActor.run {
-                    isRefreshing = false
-                    if newCount > 0 {
-                        alertMessage = "Added \(newCount) new entries!"
-                    } else {
-                        alertMessage = "Content is up to date."
-                    }
-                    showingAlert = true
-                }
-            } catch {
-                await MainActor.run {
-                    isRefreshing = false
-                    alertMessage = "Error: \(error.localizedDescription)"
-                    showingAlert = true
-                }
-            }
-        }
     }
 }
 
 // MARK: - Entry Row
 
-struct ContentEntryRow: View {
+struct HistoryEntryRow: View {
     @ObservedObject var entry: CachedWisdomEntry
     
     var body: some View {
@@ -186,16 +156,11 @@ struct ContentEntryRow: View {
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }
-                    if entry.usedCount > 0 && entry.postedImageCount == 0 && entry.postedVideoCount == 0 {
-                        Label("\(entry.usedCount)", systemImage: "checkmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    }
                 }
                 
-                // Date
-                if let pubDate = entry.pubDate {
-                    Text(pubDate, style: .date)
+                // Last posted date
+                if let lastUsed = entry.lastUsedAt {
+                    Text(lastUsed, style: .date)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -235,7 +200,7 @@ struct ContentEntryRow: View {
 
 // MARK: - Detail Sheet
 
-struct ContentDetailSheet: View {
+struct HistoryDetailSheet: View {
     let entry: CachedWisdomEntry
     @Environment(\.dismiss) private var dismiss
     @State private var showingGraphicPreview = false
@@ -260,19 +225,14 @@ struct ContentDetailSheet: View {
                         // Post counts
                         HStack(spacing: 12) {
                             if entry.postedImageCount > 0 {
-                                Label("\(entry.postedImageCount) image", systemImage: "photo.fill")
+                                Label("\(entry.postedImageCount) image post(s)", systemImage: "photo.fill")
                                     .font(.caption)
                                     .foregroundStyle(.blue)
                             }
                             if entry.postedVideoCount > 0 {
-                                Label("\(entry.postedVideoCount) video", systemImage: "video.fill")
+                                Label("\(entry.postedVideoCount) video post(s)", systemImage: "video.fill")
                                     .font(.caption)
                                     .foregroundStyle(.red)
-                            }
-                            if entry.usedCount > 0 && entry.postedImageCount == 0 && entry.postedVideoCount == 0 {
-                                Text("Used \(entry.usedCount) time(s)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -299,29 +259,47 @@ struct ContentDetailSheet: View {
                     
                     Divider()
                     
-                    // Metadata
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let pubDate = entry.pubDate {
-                            Label("Published: \(pubDate, style: .date)", systemImage: "calendar")
+                    // Post History Metadata
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Post History")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        
+                        if let lastUsed = entry.lastUsedAt {
+                            Label("Last posted: \(lastUsed, style: .date)", systemImage: "clock")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        if let fetchedAt = entry.fetchedAt {
-                            Label("Cached: \(fetchedAt, style: .relative) ago", systemImage: "arrow.down.circle")
+                        
+                        Label("Total posts: \(entry.usedCount)", systemImage: "number")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        if entry.postedImageCount > 0 {
+                            Label("Image posts: \(entry.postedImageCount)", systemImage: "photo")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.blue)
                         }
-                        if let link = entry.link {
-                            Link(destination: link) {
-                                Label("View on wisdombook.life", systemImage: "link")
-                                    .font(.caption)
-                            }
+                        
+                        if entry.postedVideoCount > 0 {
+                            Label("Video posts: \(entry.postedVideoCount)", systemImage: "video")
+                                .font(.caption)
+                                .foregroundStyle(.red)
                         }
                     }
                     
                     Divider()
                     
-                    // Generate Graphic button
+                    // Link
+                    if let link = entry.link {
+                        Link(destination: link) {
+                            Label("View on wisdombook.life", systemImage: "link")
+                                .font(.caption)
+                        }
+                    }
+                    
+                    // Regenerate Graphic button
                     Button {
                         showingGraphicPreview = true
                     } label: {
@@ -330,12 +308,13 @@ struct ContentDetailSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .padding(.top, 8)
                     
                     Spacer()
                 }
                 .padding()
             }
-            .navigationTitle("Entry Details")
+            .navigationTitle("Post Details")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
