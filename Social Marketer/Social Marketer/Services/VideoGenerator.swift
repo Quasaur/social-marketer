@@ -24,12 +24,13 @@ final class VideoGenerator {
         logger.info("🎬 Starting video generation via SocialEffects API...")
         
         // Convert WisdomEntry to RSSItem format expected by API
+        // source: Book name (quotes), Bible reference (passages), or empty (thoughts)
         let rssItem = RSSItem(
             title: entry.title,
             content: entry.content,
             contentType: entry.category.rawValue.lowercased(),
             nodeTitle: sanitizeTitle(entry.title),
-            source: entry.reference ?? AppConfiguration.URLs.wisdomBookDomain,
+            source: entry.reference ?? "",  // Empty for thoughts (no book/bible reference)
             pubDate: entry.pubDate
         )
         

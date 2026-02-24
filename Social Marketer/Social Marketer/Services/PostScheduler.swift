@@ -340,17 +340,7 @@ final class PostScheduler {
             // Fetch from all feed types for maximum variety
             var allEntries: [WisdomEntry] = []
             
-            // Try thoughts feed
-            print("[AUTO-POPULATE] Fetching thoughts feed...")
-            if let thoughtsURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml"),
-               let thoughts = try? await rssParser.fetchFeed(url: thoughtsURL) {
-                print("[AUTO-POPULATE] Thoughts feed: \(thoughts.count) entries")
-                allEntries.append(contentsOf: thoughts)
-            } else {
-                print("[AUTO-POPULATE] Thoughts feed: failed or empty")
-            }
-            
-            // Try quotes feed
+            // Try quotes feed (has wisdom:source with book names)
             print("[AUTO-POPULATE] Fetching quotes feed...")
             if let quotesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/quotes.xml"),
                let quotes = try? await rssParser.fetchFeed(url: quotesURL) {
@@ -360,7 +350,7 @@ final class PostScheduler {
                 print("[AUTO-POPULATE] Quotes feed: failed or empty")
             }
             
-            // Try passages feed
+            // Try passages feed (has wisdom:source with Bible references)
             print("[AUTO-POPULATE] Fetching passages feed...")
             if let passagesURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/passages.xml"),
                let passages = try? await rssParser.fetchFeed(url: passagesURL) {
@@ -368,6 +358,18 @@ final class PostScheduler {
                 allEntries.append(contentsOf: passages)
             } else {
                 print("[AUTO-POPULATE] Passages feed: failed or empty")
+            }
+            
+            // Try thoughts feed (lacks wisdom:source - skip expensive extractBookName)
+            // NOTE: Thoughts are original content without book references, so we don't
+            // try to extract book names (which would fail anyway)
+            print("[AUTO-POPULATE] Fetching thoughts feed...")
+            if let thoughtsURL = URL(string: AppConfiguration.URLs.wisdomBook + "/feed/thoughts.xml"),
+               let thoughts = try? await rssParser.fetchFeed(url: thoughtsURL) {
+                print("[AUTO-POPULATE] Thoughts feed: \(thoughts.count) entries")
+                allEntries.append(contentsOf: thoughts)
+            } else {
+                print("[AUTO-POPULATE] Thoughts feed: failed or empty")
             }
             
             // Fall back to daily feed if others are empty

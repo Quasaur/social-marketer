@@ -207,11 +207,12 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
             }
         }
         
-        // 3. Fallback: extract book name from <em> tag (standalone, not "Parent Topic")
-        if reference == nil {
+        // 3. Fallback: extract book name from <em> tag (only for Quotes and Passages)
+        // Thoughts are original content without book references, so skip this expensive call
+        if reference == nil && category != .thought {
             stats_usedExtractBookName += 1
             if Log.isDebugMode {
-                Log.debug("Calling extractBookName for item #\(stats_totalEntries)...", category: "RSS")
+                Log.debug("Calling extractBookName for item #\(stats_totalEntries) (category: \(category))...", category: "RSS")
             }
             reference = extractBookName(from: currentContent)
             if Log.isDebugMode {

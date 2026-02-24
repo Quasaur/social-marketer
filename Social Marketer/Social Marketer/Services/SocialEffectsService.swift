@@ -71,7 +71,8 @@ class SocialEffectsService: SocialEffectsServiceProtocol {
                 title: rssItem.title,
                 content: rssItem.content,
                 contentType: rssItem.contentType,
-                nodeTitle: rssItem.nodeTitle
+                nodeTitle: rssItem.nodeTitle,
+                source: rssItem.source
             )
         }
     }
@@ -108,7 +109,8 @@ class SocialEffectsService: SocialEffectsServiceProtocol {
         title: String,
         content: String,
         contentType: String,
-        nodeTitle: String
+        nodeTitle: String,
+        source: String
     ) async throws -> String {
         guard let url = URL(string: "\(baseURL)/generate") else {
             throw SocialEffectsError.invalidResponse
@@ -124,6 +126,7 @@ class SocialEffectsService: SocialEffectsServiceProtocol {
             "content": content,
             "content_type": contentType,
             "node_title": nodeTitle,
+            "source": source,  // Book name (quotes) or Bible reference (passages)
             "ping_pong": true
         ]
         
