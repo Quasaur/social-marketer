@@ -61,7 +61,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
         }
         
         if pendingCount == 0 {
-            ErrorLog.shared.log(category: "TestPost", message: "Queue empty - populating from RSS", detail: nil)
+            Log.app.info("[TestPost] Queue empty - populating from RSS")
             let scheduler = PostScheduler()
             await scheduler.autoPopulateQueueFromRSS()
         }
@@ -85,12 +85,12 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
     /// Generate content and image for test post from scheduled post
     private func prepareScheduledContent() async -> (content: String, image: NSImage?, link: URL, title: String)? {
         guard let scheduledPost = await getScheduledPost() else {
-            ErrorLog.shared.log(category: "TestPost", message: "No scheduled post available", detail: "Queue is empty or no due posts")
+            Log.app.warning("[TestPost] No scheduled post available - Queue is empty or no due posts")
             return nil
         }
         
         guard let content = scheduledPost.content else {
-            ErrorLog.shared.log(category: "TestPost", message: "Scheduled post has no content", detail: nil)
+            Log.app.warning("[TestPost] Scheduled post has no content")
             return nil
         }
         
@@ -112,7 +112,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
         let image = generator.generate(from: entry)
         
         if image == nil {
-            ErrorLog.shared.log(category: "TestPost", message: "Failed to generate graphic", detail: "Proceeding with text-only post")
+            Log.app.warning("[TestPost] Failed to generate graphic - Proceeding with text-only post")
         }
         
         return (content, image, link, title)

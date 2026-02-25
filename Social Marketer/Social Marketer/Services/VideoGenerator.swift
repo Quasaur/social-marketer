@@ -50,6 +50,9 @@ final class VideoGenerator {
         } catch SocialEffectsError.generationFailed(let message) {
             logger.error("❌ Video generation failed: \(message)")
             throw VideoGenerationError.generationFailed(message)
+        } catch let error as VideoGenerationError {
+            // Re-throw VideoGenerationError as-is
+            throw error
         } catch {
             logger.error("❌ Unexpected error: \(error.localizedDescription)")
             throw VideoGenerationError.unknown(error)
@@ -112,8 +115,19 @@ final class VideoGenerator {
 }
 
 /// Errors that can occur during video generation
-enum VideoGenerationError: Error {
+enum VideoGenerationError: Error, LocalizedError {
     case serverUnavailable
     case generationFailed(String)
     case unknown(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .serverUnavailable:
+            return "Video generation server is not available. Please ensure Social Effects is properly installed at ~/Developer/social-effects/."
+        case .generationFailed(let message):
+            return "Video generation failed: \(message)"
+        case .unknown(let error):
+            return "Unexpected error during video generation: \(error.localizedDescription)"
+        }
+    }
 }

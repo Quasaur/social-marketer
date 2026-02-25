@@ -9,7 +9,7 @@ Social Marketer is a Swift/SwiftUI desktop application that automates content sy
 ## Features
 
 ### Content Distribution
-- **Multi-Platform Posting**: Manage content across 5+ social media platforms (Twitter/X, Instagram, LinkedIn, Facebook, Pinterest, YouTube)
+- **Multi-Platform Posting**: Manage content across 6+ social media platforms (Twitter/X, Instagram, LinkedIn, Facebook, Pinterest, YouTube, TikTok)
 - **Post Queue**: Schedule and manage pending posts with drag-and-drop prioritization
 - **RSS Integration**: Automatically fetch daily wisdom from wisdombook.life RSS feeds
 - **Manual Thought Composition**: Create custom posts with live graphic preview
@@ -19,6 +19,7 @@ Social Marketer is a Swift/SwiftUI desktop application that automates content sy
 - **Video Reuse**: Intelligently checks for existing videos before generating new ones
 - **Background Processing**: Videos generate asynchronously while you continue working
 - **YouTube Shorts Ready**: Direct upload to YouTube as Shorts with proper metadata
+- **TikTok Video Upload**: Post videos directly to TikTok via Content Posting API
 
 ### ⚠️ CRITICAL: Video File Organization
 
@@ -78,6 +79,7 @@ SocialMarketer/
 │       ├── VideoGenerator.swift     # Social Effects integration
 │       └── Connectors/
 │           ├── YouTubeConnector.swift
+│           ├── TikTokConnector.swift
 │           ├── TwitterConnector.swift
 │           └── ... (other platforms)
 ├── docs/
@@ -197,6 +199,13 @@ Social Effects (video generation) status appears in:
 2. Verify API project has YouTube Data API enabled
 3. Check OAuth consent screen includes `youtube.upload` scope
 4. See [YouTube Test Post Results](docs/platforms/youtube_testpin_results.md)
+
+### TikTok Connection Issues
+
+1. Check that your TikTok Developer app is approved for **Content Posting API**
+2. Verify DNS TXT record is properly added to your domain (see [API Developer Portals](docs/api_dev_portals.md))
+3. Ensure redirect URI is set to: `http://localhost:9095/oauth/callback`
+4. Check that media preference is set to **Video** (image posts not yet supported)
 
 ### Video Generation Timeout
 

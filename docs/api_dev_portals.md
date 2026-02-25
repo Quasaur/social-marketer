@@ -244,6 +244,8 @@ Follow these detailed steps to enable Social Marketer to post Video Shorts to yo
 8. Click **Allow** to grant permissions
 9. The app will automatically receive the authorization code
 
+> **Note on Connection State**: Once you've entered your YouTube API credentials, YouTube will show as "Connected" in the Platforms list. The button will display **"Disconnect"** to indicate the platform is ready for posting. OAuth tokens are managed automatically by the app when posting.
+
 #### Step 6: Test YouTube Video Shorts Posting
 
 1. In Social Marketer, ensure YouTube is **enabled** (toggle is ON)
@@ -307,6 +309,203 @@ Uses localhost HTTP server (port 8989), same as other OAuth 2.0 platforms.
 
 ---
 
+## TikTok
+
+**Portal**: <https://developers.tiktok.com/>
+
+> ⚠️ **Important**: TikTok requires **separate approval** for the Content Posting API. Standard developer access does NOT include video posting capabilities.
+
+### Step-by-Step: Obtaining TikTok API Access
+
+#### Step 1: Apply for TikTok for Developers Access
+
+1. Go to [TikTok for Developers](https://developers.tiktok.com/)
+2. Sign in with your TikTok account
+3. Click **"My Apps"** → **"Connect an app"**
+4. Fill out the application form:
+   - **App Name**: Social Marketer
+   - **App Category**: Content Management / Social Media
+   - **Use Case**: Content Publishing Automation
+   - **Website**: https://wisdombook.life
+   - **Privacy Policy**: https://wisdombook.life/privacy
+   - **Terms of Service**: https://wisdombook.life/terms
+5. Submit the application and wait for approval (typically 1-3 business days)
+
+> **Platform Selection**: When configuring your app, select **Desktop** as the platform type (Social Marketer is a macOS desktop application).
+
+#### Step 2: Request Content Posting API Access
+
+Once your basic app is approved, you must apply separately for video posting:
+
+1. In your app dashboard, go to **"Products"**
+2. Find **"Content Posting"** and click **"Apply"**
+3. Provide detailed information:
+   - **Business Justification**: Automated distribution of educational/inspirational content
+   - **Expected Volume**: ~1-5 videos per day (be conservative)
+   - **Content Types**: Educational videos, inspirational quotes, wisdom content
+   - **Use Case Description**: "Social Marketer automatically posts daily wisdom content from The Book of Wisdom to help users share meaningful insights with their audience"
+4. Submit and wait for approval (1-5 business days)
+
+#### Step 3: Configure Platform Settings (Desktop)
+
+Since you selected **Desktop** as the platform, configure these required URLs:
+
+| Field | Value | Description |
+|:------|:------|:------------|
+| **Desktop URL** | `https://wisdombook.life` | Your app's website/landing page |
+| **Privacy Policy URL** | `https://wisdombook.life/privacy` | Required for all apps |
+| **Terms of Service URL** | `https://wisdombook.life/terms` | Required for all apps |
+
+> ⚠️ **Note**: The Desktop URL is required even though this is a native macOS app. Use your primary website (wisdombook.life) as the Desktop URL.
+
+#### Step 4: Verify URL Ownership (CRITICAL)
+
+TikTok requires you to **prove ownership** of all URLs before they can be used. You must complete this step or the URLs will show "This URL is not verified" error.
+
+**Recommended: Domain Verification (verifies all URLs at once)**
+
+1. Click the **"URL properties"** button at the top of your app page
+2. Ensure you're in **Production mode**
+3. Click **"Verify properties"**
+4. Select **"Domain"** as Property Type
+5. Enter: `wisdombook.life` (just the domain, no https://)
+6. Click **Verify** — TikTok will generate a DNS TXT record for you
+
+**Add the DNS TXT Record to GoDaddy:**
+
+1. Log in to your [GoDaddy Account](https://account.godaddy.com/)
+2. Go to **"My Products"** → Find your domain (wisdombook.life)
+3. Click **"DNS"** (or "Manage DNS")
+4. Click **"Add"** or **"Add Record"**
+5. Fill in the record details:
+   | Field | Value |
+   |:------|:------|
+   | **Type** | TXT |
+   | **Name** | @ (or leave blank) |
+   | **Value** | (paste the TXT value from TikTok, e.g., `tiktok-verification=abc123xyz`) |
+   | **TTL** | 1 Hour (or default) |
+6. Click **"Save"**
+7. Wait 5-30 minutes for DNS propagation
+8. Return to TikTok portal and click **"Verify"**
+
+**Alternative: URL Prefix Verification**
+
+If you prefer not to modify DNS:
+1. Select **"URL prefix"** in TikTok
+2. Enter the full URL (e.g., `https://wisdombook.life`)
+3. Download the signature file
+4. Upload to your website's root directory
+5. Repeat for each URL path (/privacy, /terms)
+
+> ✅ **Domain verification is recommended** — one DNS record verifies ALL three URLs (Desktop, Privacy Policy, Terms of Service) simultaneously.
+
+#### Step 5: Configure OAuth Settings
+
+1. In your app dashboard, go to **"Auth"** tab
+2. Add OAuth 2.0 Redirect URI:
+   ```
+   http://localhost:9095/oauth/callback
+   ```
+3. Enable PKCE (Proof Key for Code Exchange) - TikTok requires this for security
+4. Save your **Client Key** and **Client Secret**
+
+#### Step 6: Configure Social Marketer
+
+1. Open **Social Marketer** app
+2. Go to **Platforms** tab
+3. Find **TikTok** and click **Settings**
+4. Enter:
+   - **Client Key**: (from Step 5)
+   - **Client Secret**: (from Step 5)
+5. Click **Connect**
+6. A browser window will open for OAuth authorization
+7. Sign in with your TikTok account
+8. Click **Allow** to grant permissions
+9. The app will automatically receive the authorization code and complete authentication
+
+#### Step 7: Test TikTok Video Posting
+
+1. In Social Marketer, ensure TikTok is **enabled** (toggle is ON)
+2. Go to **Platform Settings** → **TikTok**
+3. Click the **Test Video** button
+4. The app will:
+   - Fetch daily wisdom from the Post Queue
+   - Generate a video short using Social Effects
+   - Upload the video to TikTok
+5. Check your TikTok profile to verify the video was posted
+
+### TikTok Video Specifications
+
+| Property | Value |
+|:---------|:------|
+| **Aspect Ratio** | 9:16 (vertical) |
+| **Resolution** | 1080 x 1920 pixels |
+| **Duration** | 15-60 seconds recommended |
+| **Format** | MP4 (H.264) |
+| **Max File Size** | 287.6 MB (iOS), 72 MB (Android) |
+| **Hashtags** | Auto-generated based on content |
+
+### Required Scopes
+
+- `video.upload` - Upload videos to TikTok
+- `video.publish` - Publish videos to TikTok
+- `user.info.basic` - Access basic user information
+
+### API Endpoint
+
+`POST https://open.tiktokapis.com/v2/post/publish/video/init/`
+
+### Content Flow
+
+```
+RSS Feed → Wisdom Entry → Social Effects API → Video Short → TikTok Upload API → TikTok
+```
+
+### Redirect Flow
+
+Uses localhost HTTP server on port 9095 with PKCE (Proof Key for Code Exchange) for enhanced security.
+
+### Approval Time
+
+| Stage | Time |
+|:------|:-----|
+| Basic Developer Access | 1-3 business days |
+| Content Posting API Access | 1-5 business days |
+| **Total** | **2-8 business days** |
+
+### Known Limitations
+
+| Feature | Status | Notes |
+|:--------|:-------|:------|
+| Video Upload | ✅ Available | Via Content Posting API |
+| Photo Upload | ❌ Not Available | TikTok is video-first platform |
+| Text Posts | ❌ Not Available | Not supported |
+| Scheduling | ⚠️ Partial | Post immediately only |
+| Caption Length | ⚠️ Limited | 2200 characters max (recommend <1000) |
+
+### Media Type Preference
+
+TikTok respects Social Marketer's **Platform Media Preferences** setting:
+
+| Preference | Behavior |
+|:-----------|:---------|
+| **Video** (default) | ✅ Posts video content to TikTok |
+| **Image** | ⏭️ TikTok is **skipped** during posting (logged as "video only") |
+
+> **Note**: TikTok currently only supports video uploads. If you set the media preference to "Image" in Settings → Platform Media Preferences → TikTok, the platform will be automatically skipped during scheduled posting and the Post Queue processing will continue with other enabled platforms.
+
+### Troubleshooting
+
+| Issue | Solution |
+|:------|:---------|
+| "Content Posting API not approved" | Apply separately for Content Posting product |
+| "Invalid redirect URI" | Ensure exact match including trailing slash |
+| "PKCE verification failed" | This is handled automatically by Social Marketer |
+| Video stuck processing | Known Meta-side issue - see community forums |
+| "Access denied" | Ensure your TikTok account is in good standing |
+
+---
+
 ## Summary Table
 
 | Platform | Portal | Key Credentials | Approval Time |
@@ -317,6 +516,7 @@ Uses localhost HTTP server (port 8989), same as other OAuth 2.0 platforms.
 | LinkedIn | developer.linkedin.com | Client ID, Client Secret | Instant - 24h |
 | Pinterest | developers.pinterest.com | App ID, App Secret | 1-7 days |
 | YouTube | console.cloud.google.com | Client ID, Client Secret | Instant (test mode) |
+| TikTok | developers.tiktok.com | Client Key, Client Secret | 2-8 days (Content Posting API) |
 
 ---
 

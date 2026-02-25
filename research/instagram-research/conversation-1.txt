@@ -1,0 +1,78 @@
+URL: https://developers.facebook.com/community/threads/1446814429617691/
+Title: Endpoint to check container status returns generic ERROR status
+
+=== CONTENT ===
+
+Grant (Original Poster):
+We are running into an issue where we get back generic "ERROR" code when attempting to check the status of a video container we just uploaded. This is using Instagram API via Instagram Login.
+
+We are uploading videos to Instagram per the documentation, but we sometimes get this result when checking the container status:
+
+Request:
+GET https://graph.instagram.com/v22.0/<container_id>?fields=id,status,status_code&access_token=<token>
+
+Response:
+{'id': '18482264659064819', 'status': 'ERROR', 'status_code': 'ERROR'}
+
+According to the documentation, if the status_code is ERROR then this endpoint is supposed to give us back a status with detail about why the container failed to upload.
+
+I can't find any pattern to when this issue happens. It doesn't seem to be a resolution or encoding issue, because we encode all videos as 1080p mp4s before uploading.
+
+This is how we are publishing the media:
+POST https://graph.instagram.com/v22.0/<id>/media?caption=hello&is_carousel_item=False&media_type=REELS&video_url=<url>&share_to_feed=True&access_token=<token>
+
+Does anyone know why this might be happening?
+
+---
+
+駒板 充:
+I'm experiencing the same thing.
+
+{
+  "status_code": "ERROR",
+  "status": "Error: Media upload has failed with error code 0",
+  "id": "17849969487412350"
+}
+
+after.
+
+{
+  "status_code": "FINISHED",
+  "status": "Finished: Media has been uploaded and it is ready to be published.",
+  "id": "17849969487412350"
+}
+I'm having trouble figuring out how to handle this.
+
+---
+
+Michael:
+We are seeing the same thing, ERROR status code then FINISHED a few moments after.
+
+---
+
+Francisco:
+Also getting the same thing
+
+{
+  "id": "18067616492207313",
+  "status": "ERROR",
+  "status_code": "ERROR"
+}
+
+Anyone figured out a workaround or how to submit a bug?
+
+---
+
+Nicu:
+We are also experiencing this
+
+{'id': '', 'status': 'ERROR', 'status_code': 'ERROR'}
+
+What is interesting that for some users the same video successfully publishes
+
+---
+
+Francisco:
+Also experiencing the same thing here!
+
+=== END OF CONVERSATION 1 ===

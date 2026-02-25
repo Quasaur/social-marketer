@@ -18,14 +18,20 @@ This file provides context for AI assistants and developers working on the Socia
 │  Views          │  Dashboard, Queue, Platform Settings  │
 │  Services       │  PostScheduler, VideoGenerator        │
 │  Models         │  Post, Platform, PostLog (Core Data)  │
-│  Connectors     │  YouTube, Twitter, LinkedIn, etc.     │
+│  Connectors     │  YouTube, TikTok, Twitter, LinkedIn, etc. │
 └─────────────────────────────────────────────────────────┘
                            │
            ┌───────────────┼───────────────┐
            ▼               ▼               ▼
     ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-    │Social Effects│ │  YouTube    │ │  Twitter    │
+    │Social Effects│ │  YouTube    │ │  TikTok     │
     │ (Local API)  │ │   API       │ │   API       │
+    └─────────────┘ └─────────────┘ └─────────────┘
+                           │
+           ┌───────────────┼───────────────┐
+           ▼               ▼               ▼
+    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+    │   Twitter   │ │  LinkedIn   │ │  Instagram  │
     └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
@@ -257,7 +263,7 @@ All Test Post/Pin buttons use the scheduled post from the queue:
 - **Content Source**: First pending post from Post Queue (auto-populates from RSS if empty)
 - **Media**: Respects Preferred Media Preferences (image/video)
 - **Error Handling**: Failures logged to Recent Errors (no fallback to other media types)
-- **Platforms**: Twitter, LinkedIn, Facebook, Instagram, Pinterest, YouTube
+- **Platforms**: Twitter, LinkedIn, Facebook, Instagram, Pinterest, YouTube, TikTok
 - **Auto-Populate**: If queue is empty, test posts automatically populate it WITHOUT posting to all platforms
 
 **Implementation:**
@@ -294,6 +300,13 @@ Dashboard's External Connections panel shows:
 - API project may need verification in Google Cloud Console
 - Check `privacyStatus` is set to "public" in upload request
 - Verify `selfDeclaredMadeForKids` is explicitly set
+
+### TikTok Upload Issues
+
+- Requires separate **Content Posting API** approval (not just basic developer access)
+- Domain verification required via DNS TXT record
+- Media preference must be set to **Video** (image posting not yet implemented)
+- OAuth uses PKCE with localhost callback on port 9095
 
 ### Video Generation Timeout
 

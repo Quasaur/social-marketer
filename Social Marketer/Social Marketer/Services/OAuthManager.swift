@@ -119,6 +119,19 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 usePKCE: false
             )
         }
+        
+        static func tiktok(clientID: String, clientSecret: String) -> OAuthConfig {
+            OAuthConfig(
+                platformID: "tiktok",
+                clientID: clientID,
+                clientSecret: clientSecret,
+                authURL: URL(string: "https://www.tiktok.com/v2/auth/authorize/")!,
+                tokenURL: URL(string: "https://open.tiktokapis.com/v2/oauth/token/")!,
+                redirectURI: "http://localhost:9095/oauth/callback",
+                scopes: ["video.upload", "video.publish", "user.info.basic"],
+                usePKCE: true
+            )
+        }
     }
     
     // MARK: - API Credentials (stored in Keychain)
@@ -207,6 +220,11 @@ final class OAuthManager: NSObject, ObservableObject, OAuthServiceProtocol {
                 throw OAuthError.missingCredentials("YouTube requires Client Secret")
             }
             return .youtube(clientID: creds.clientID, clientSecret: secret)
+        case "tiktok":
+            guard let secret = creds.clientSecret else {
+                throw OAuthError.missingCredentials("TikTok requires Client Secret")
+            }
+            return .tiktok(clientID: creds.clientID, clientSecret: secret)
         default:
             throw OAuthError.missingCredentials("Unknown platform: \(platform)")
         }

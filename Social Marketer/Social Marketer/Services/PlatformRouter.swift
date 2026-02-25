@@ -115,6 +115,15 @@ final class PlatformRouter {
                 continue
             }
             
+            // Check TikTok media preference - skip if set to image (video only platform for now)
+            if platformName == "TikTok" && platform.prefersImage {
+                let skipMsg = "TikTok skipped - media preference set to image (video only)"
+                logger.info("⏭️ \(skipMsg)")
+                let log = PostLog(context: context, post: postRecord, platform: platform, error: skipMsg)
+                postRecord.addToLogs(log)
+                continue
+            }
+            
             // Determine caption: auto-build from entry if available, otherwise use provided content
             let caption: String
             if let entry = entry {

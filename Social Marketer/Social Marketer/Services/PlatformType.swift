@@ -149,6 +149,6 @@ extension PlatformType {
     
     /// Tier 1 platforms (fully implemented)
     static var tier1: [PlatformType] {
-        [.twitter, .linkedIn, .facebook, .instagram, .pinterest, .youTube]
+        [.twitter, .linkedIn, .facebook, .instagram, .pinterest, .youTube, .tikTok]
     }
 }

@@ -47,7 +47,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     
     private func fetchInstagramBusinessAccountID(userToken: String) async throws {
         // Step 1: Get Pages
-        let pagesURL = URL(string: "https://graph.facebook.com/v24.0/me/accounts?access_token=\(userToken)")!
+        let pagesURL = URL(string: "https://graph.facebook.com/v25.0/me/accounts?access_token=\(userToken)")!
         let pagesResponse = try await performJSONRequest(getRequest(url: pagesURL), decoding: PagesResponse.self)
         
         guard let page = pagesResponse.data.first else {
@@ -60,7 +60,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
         }) ?? page
         
         // Step 2: Get Instagram Business Account ID
-        let igURL = URL(string: "https://graph.facebook.com/v24.0/\(targetPage.id)?fields=instagram_business_account&access_token=\(targetPage.access_token)")!
+        let igURL = URL(string: "https://graph.facebook.com/v25.0/\(targetPage.id)?fields=instagram_business_account&access_token=\(targetPage.access_token)")!
         let igResponse = try await performJSONRequest(getRequest(url: igURL), decoding: IGAccountResponse.self)
         
         guard let igAccount = igResponse.instagram_business_account else {
@@ -129,13 +129,44 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     }
     
     func postVideo(_ videoURL: URL, caption: String) async throws -> PostResult {
+        return try await postVideo(videoURL, caption: caption, externalVideoURL: nil)
+    }
+    
+    /// Posts video to Instagram Reels with optional external URL
+    /// - Parameters:
+    ///   - videoURL: Local video file URL
+    ///   - caption: Caption text
+    ///   - externalVideoURL: Optional external URL - if provided, skips automatic upload
+    func postVideo(_ videoURL: URL, caption: String, externalVideoURL: String?) async throws -> PostResult {
         guard let token = accessToken, let accountID = businessAccountID else {
             throw PlatformError.notConfigured
         }
         
         logInfo("Posting video to Instagram (Reels)...")
         
-        let publicVideoURL = try await uploadVideoToFacebook(videoURL: videoURL, token: token)
+        let publicVideoURL: String
+        
+        if let externalURL = externalVideoURL {
+            // Use provided external URL
+            logInfo("Using external video URL: \(externalURL)")
+            publicVideoURL = externalURL
+        } else {
+            // Automatically upload to file hosting service for public URL
+            // This is required because Instagram needs a publicly accessible URL
+            logInfo("Uploading video to public file hosting service...")
+            do {
+                // Try 0x0.st first (more reliable), fallback to transfer.sh
+                publicVideoURL = try await FileUploadService.shared.uploadVideoTo0x0(videoURL)
+            } catch {
+                logInfo("0x0.st failed, trying transfer.sh: \(error.localizedDescription)")
+                do {
+                    publicVideoURL = try await FileUploadService.shared.uploadVideo(videoURL)
+                } catch {
+                    throw PlatformError.postFailed("Failed to create public video URL: \(error.localizedDescription). Please check internet connection.")
+                }
+            }
+        }
+        
         let igCaption = "\(caption)\n\n📖 Read more at \(AppConfiguration.URLs.wisdomBookDomain) (link in bio)"
         
         let containerID = try await createReelsContainer(
@@ -144,6 +175,10 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
             accountID: accountID,
             token: token
         )
+        
+        // Wait before checking status (community reports this helps)
+        logInfo("Waiting 10 seconds before checking container status...")
+        try await Task.sleep(nanoseconds: 10_000_000_000)
         
         try await waitForContainerReady(containerID: containerID, token: token)
         let mediaID = try await publishContainer(containerID: containerID, accountID: accountID, token: token)
@@ -162,7 +197,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
             throw PlatformError.postFailed("Facebook Page not configured. Connect Facebook first.")
         }
         
-        let url = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/photos")!
+        let url = URL(string: "https://graph.facebook.com/v25.0/\(pageCreds.pageID)/photos")!
         
         // Use MultipartFormBuilder
         var builder = MultipartFormBuilder()
@@ -176,7 +211,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
         let photoResponse = try await performJSONRequest(request, decoding: PhotoResponse.self)
         
         // Get CDN URL
-        let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(photoResponse.id)?fields=images&access_token=\(pageCreds.pageAccessToken)")!
+        let sourceURL = URL(string: "https://graph.facebook.com/v25.0/\(photoResponse.id)?fields=images&access_token=\(pageCreds.pageAccessToken)")!
         let imageResponse = try await performJSONRequest(getRequest(url: sourceURL), decoding: ImageResponse.self)
         
         guard let cdnURL = imageResponse.images.first?.source else {
@@ -207,34 +242,55 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     
     private func uploadVideoSimple(videoURL: URL, pageCreds: FacebookPageCredentials) async throws -> String {
         let videoData = try Data(contentsOf: videoURL)
-        let url = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+        let url = URL(string: "https://graph-video.facebook.com/v25.0/\(pageCreds.pageID)/videos")!
         
         var builder = MultipartFormBuilder()
         builder.addField(name: "access_token", value: pageCreds.pageAccessToken)
-        builder.addField(name: "published", value: "false")
+        builder.addField(name: "published", value: "true")  // Must be published for Instagram to access the URL
         builder.addMP4Video(name: "source", data: videoData)
         
         let (body, contentType) = builder.build()
         let request = postRequest(url: url, body: body, contentType: contentType)
         
         let vidResp = try await performJSONRequest(request, decoding: VideoResponse.self)
+        let videoID = vidResp.id
         
-        // Get source URL
-        let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(vidResp.id)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
-        let sourceResp = try await performJSONRequest(getRequest(url: sourceURL), decoding: VideoSourceResponse.self)
+        logInfo("Video uploaded to Facebook, ID: \(videoID). Getting source URL...")
         
-        return sourceResp.source
+        // Get source URL - this is the direct video file URL that Instagram can access
+        // Note: 'permalink' field doesn't exist on Video objects, use 'source' instead
+        let sourceRequestURL = URL(string: "https://graph.facebook.com/v25.0/\(videoID)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
+        
+        for attempt in 1...10 {
+            let sourceResp = try await performJSONRequest(getRequest(url: sourceRequestURL), decoding: VideoSourceResponse.self)
+            
+            if let source = sourceResp.source {
+                logInfo("Got Facebook video source URL: \(source.prefix(80))...")
+                // Wait extra time for CDN propagation before returning
+                logInfo("Waiting 10 seconds for Facebook CDN to propagate...")
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+                return source
+            }
+            
+            // Source not ready yet, wait and retry
+            if attempt < 10 {
+                print("[Instagram] Video source URL not ready, waiting... (attempt \(attempt)/10)")
+                try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000) // 2s, 4s, 6s...
+            }
+        }
+        
+        throw PlatformError.postFailed("Failed to get video source URL from Facebook after 10 attempts")
     }
     
     private func uploadVideoResumable(videoURL: URL, fileSize: Int64, pageCreds: FacebookPageCredentials) async throws -> String {
         logInfo("Using resumable upload for large video (\(fileSize / 1024 / 1024) MB)")
         
         // Step 1: Initialize upload
-        let initURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+        let initURL = URL(string: "https://graph.facebook.com/v25.0/\(pageCreds.pageID)/videos")!
         
         let initBody: [String: Any] = [
             "access_token": pageCreds.pageAccessToken,
-            "published": false,
+            "published": true,  // Must be published for Instagram to access the URL
             "file_size": fileSize,
             "upload_phase": "start"
         ]
@@ -263,7 +319,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
             
             logInfo("Uploading chunk: \(startOffset) - \(startOffset + currentChunkSize)")
             
-            let chunkURL = URL(string: "https://graph-video.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+            let chunkURL = URL(string: "https://graph-video.facebook.com/v25.0/\(pageCreds.pageID)/videos")!
             
             var builder = MultipartFormBuilder()
             builder.addField(name: "access_token", value: pageCreds.pageAccessToken)
@@ -285,7 +341,7 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
         }
         
         // Step 3: Finish upload
-        let finishURL = URL(string: "https://graph.facebook.com/v24.0/\(pageCreds.pageID)/videos")!
+        let finishURL = URL(string: "https://graph.facebook.com/v25.0/\(pageCreds.pageID)/videos")!
         let finishBody: [String: Any] = [
             "access_token": pageCreds.pageAccessToken,
             "upload_phase": "finish",
@@ -295,19 +351,37 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
         var finishRequest = postRequest(url: finishURL, body: try JSONSerialization.data(withJSONObject: finishBody), contentType: "application/json")
         _ = try await performJSONRequest(finishRequest, decoding: FinishResponse.self)
         
-        logInfo("Resumable upload complete. Video ID: \(videoID)")
+        logInfo("Resumable upload complete. Video ID: \(videoID). Getting source URL...")
         
-        // Get source URL
-        let sourceURL = URL(string: "https://graph.facebook.com/v24.0/\(videoID)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
-        let sourceResp = try await performJSONRequest(getRequest(url: sourceURL), decoding: VideoSourceResponse.self)
+        // Get source URL - this is the direct video file URL that Instagram can access
+        // Note: 'permalink' field doesn't exist on Video objects, use 'source' instead
+        let sourceRequestURL = URL(string: "https://graph.facebook.com/v25.0/\(videoID)?fields=source&access_token=\(pageCreds.pageAccessToken)")!
         
-        return sourceResp.source
+        for attempt in 1...10 {
+            let sourceResp = try await performJSONRequest(getRequest(url: sourceRequestURL), decoding: VideoSourceResponse.self)
+            
+            if let source = sourceResp.source {
+                logInfo("Got Facebook video source URL: \(source.prefix(80))...")
+                // Wait extra time for CDN propagation before returning
+                logInfo("Waiting 10 seconds for Facebook CDN to propagate...")
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+                return source
+            }
+            
+            // Source not ready yet, wait and retry
+            if attempt < 10 {
+                print("[Instagram] Video source URL not ready, waiting... (attempt \(attempt)/10)")
+                try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+            }
+        }
+        
+        throw PlatformError.postFailed("Failed to get video source URL from Facebook after 10 attempts")
     }
     
     // MARK: - Instagram Containers
     
     private func createMediaContainer(imageURL: String, caption: String, accountID: String, token: String) async throws -> String {
-        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media")!
+        var components = URLComponents(string: "https://graph.facebook.com/v25.0/\(accountID)/media")!
         components.queryItems = [
             URLQueryItem(name: "image_url", value: imageURL),
             URLQueryItem(name: "caption", value: caption),
@@ -320,21 +394,33 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     }
     
     private func createReelsContainer(videoURL: String, caption: String, accountID: String, token: String) async throws -> String {
-        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media")!
+        var components = URLComponents(string: "https://graph.facebook.com/v25.0/\(accountID)/media")!
+        
+        // Ensure the video URL is properly percent-encoded
+        // Facebook CDN URLs contain & and other special characters that need encoding
+        let encodedVideoURL = videoURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? videoURL
+        
+        logInfo("Creating Reels container with video URL (first 100 chars): \(encodedVideoURL.prefix(100))...")
+        
         components.queryItems = [
             URLQueryItem(name: "media_type", value: "REELS"),
-            URLQueryItem(name: "video_url", value: videoURL),
+            URLQueryItem(name: "video_url", value: encodedVideoURL),
             URLQueryItem(name: "caption", value: caption),
+            URLQueryItem(name: "share_to_feed", value: "true"),
             URLQueryItem(name: "access_token", value: token)
         ]
         
-        let request = postRequest(url: components.url!)
+        guard let url = components.url else {
+            throw PlatformError.postFailed("Failed to construct Instagram API URL")
+        }
+        
+        let request = postRequest(url: url)
         let response = try await performJSONRequest(request, decoding: ContainerResponse.self)
         return response.id
     }
     
     private func publishContainer(containerID: String, accountID: String, token: String) async throws -> String {
-        var components = URLComponents(string: "https://graph.facebook.com/v24.0/\(accountID)/media_publish")!
+        var components = URLComponents(string: "https://graph.facebook.com/v25.0/\(accountID)/media_publish")!
         components.queryItems = [
             URLQueryItem(name: "creation_id", value: containerID),
             URLQueryItem(name: "access_token", value: token)
@@ -342,24 +428,45 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
         
         let request = postRequest(url: components.url!)
         let response = try await performJSONRequest(request, decoding: PublishResponse.self)
-        return response.id
+        
+        guard let mediaID = response.getID() else {
+            throw PlatformError.postFailed("Instagram publish response missing media ID")
+        }
+        
+        return mediaID
     }
     
-    private func waitForContainerReady(containerID: String, token: String, maxAttempts: Int = 10) async throws {
+    private func waitForContainerReady(containerID: String, token: String, maxAttempts: Int = 60) async throws {
         try await Task.sleep(nanoseconds: 5_000_000_000)
+        
+        var consecutiveErrors = 0
+        let maxConsecutiveErrors = 5
         
         for attempt in 1...maxAttempts {
             let status = try await checkContainerStatus(containerID: containerID, token: token)
             
             if status == "FINISHED" {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
-                print("[Instagram] Container ready after \(attempt) poll(s)")
+                logInfo("Container ready after \(attempt) poll(s)")
                 return
             } else if status == "ERROR" {
-                throw PlatformError.postFailed("Instagram container processing failed")
+                // ERROR can be transient - don't give up immediately
+                // See: https://developers.facebook.com/community/threads/1446814429617691/
+                consecutiveErrors += 1
+                logInfo("Container status: ERROR (consecutive: \(consecutiveErrors)/\(maxConsecutiveErrors))")
+                
+                if consecutiveErrors >= maxConsecutiveErrors {
+                    throw PlatformError.postFailed("Instagram container processing failed after \(maxConsecutiveErrors) consecutive errors")
+                }
+                
+                // Continue polling - ERROR might resolve to FINISHED
+                print("[Instagram] ERROR detected but continuing to poll (attempt \(attempt)/\(maxAttempts))")
+            } else {
+                // Reset error count on non-ERROR status
+                consecutiveErrors = 0
+                print("[Instagram] Container status: \(status) (attempt \(attempt)/\(maxAttempts))")
             }
             
-            print("[Instagram] Container status: \(status) (attempt \(attempt)/\(maxAttempts))")
             try await Task.sleep(nanoseconds: 3_000_000_000)
         }
         
@@ -367,13 +474,13 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     }
     
     private func checkContainerStatus(containerID: String, token: String) async throws -> String {
-        let url = URL(string: "https://graph.facebook.com/v24.0/\(containerID)?fields=status_code&access_token=\(token)")!
+        let url = URL(string: "https://graph.facebook.com/v25.0/\(containerID)?fields=status_code&access_token=\(token)")!
         let response = try await performJSONRequest(getRequest(url: url), decoding: StatusResponse.self)
         return response.status_code ?? "UNKNOWN"
     }
     
     private func fetchPermalink(mediaID: String, token: String) async throws -> URL? {
-        let url = URL(string: "https://graph.facebook.com/v24.0/\(mediaID)?fields=permalink&access_token=\(token)")!
+        let url = URL(string: "https://graph.facebook.com/v25.0/\(mediaID)?fields=permalink&access_token=\(token)")!
         let response = try await performJSONRequest(getRequest(url: url), decoding: PermalinkResponse.self)
         
         if let permalink = response.permalink {
@@ -419,7 +526,12 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     }
     
     private struct VideoSourceResponse: Decodable {
-        let source: String
+        let source: String?
+        let id: String?
+    }
+    
+    private struct VideoPermalinkResponse: Decodable {
+        let permalink: String?
     }
     
     private struct InitResponse: Decodable {
@@ -443,7 +555,18 @@ final class InstagramConnector: BasePlatformConnector, VideoPlatformConnector {
     }
     
     private struct PublishResponse: Decodable {
-        let id: String
+        let id: String?
+        let media_id: String?  // Alternative field name Instagram might use
+        
+        // Custom decoding to handle different field names
+        enum CodingKeys: String, CodingKey {
+            case id
+            case media_id
+        }
+        
+        func getID() -> String? {
+            return id ?? media_id
+        }
     }
     
     private struct StatusResponse: Decodable {

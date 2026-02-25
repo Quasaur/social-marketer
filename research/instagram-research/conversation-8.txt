@@ -1,0 +1,81 @@
+URL: https://developers.facebook.com/community/threads/462660216385208/
+Title: Can not create Reel Instagram container when video file size is between 180MB and 1GB
+
+=== CONTENT ===
+
+Nguyen (Original Poster):
+Hi there,
+The specifications for the Reel specify a limit of 1 GB.
+https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+
+but when trying to upload a video greater than 180 MB but less than 1 GB (716 MB in the example),
+(https://static.elecktra.net/organic/ZQfyoNKU8hBb5aLoVB6L-yMo-Bw=)
+we got an internal error 2207053 is returned.
+
+The error is:
+"error_subcode": 2207053,
+"is_transient": false,
+"error_user_title": "",
+"error_user_msg": "unknown upload error",
+"fbtrace_id": "",
+"StatusCode": 0,
+"RecommendedSolution": "An unknown error occurred during upload. Generate a new container and use it to try again. This should only affect video uploads.",
+
+Note that we also tried the new flow resumable uploading but it does not work
+https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing#resumable-upload-protocol
+
+here is our request:
+curl --location --request POST 'https://rupload.facebook.com/ig-api-upload/v20.0/18032195951319562' \
+--header 'Authorization: OAuth {my_token}' \
+--header 'file_url: https://static.elecktra.net/organic/ZQfyoNKU8hBb5aLoVB6L-yMo-Bw=' \
+--header 'Content-Type: text/plain'
+
+and we got result:
+{
+    "debug_info": {
+        "retriable": false,
+        "type": "ProcessingFailedError",
+        "message": "Request processing failed"
+    }
+}
+
+with status of the init container - 18032195951319562 is:
+{
+    "id": "18032195951319562",
+    "status": "In Progress: Media is still being processed.",
+    "status_code": "IN_PROGRESS",
+    "video_status": {
+        "uploading_phase": {
+            "status": "error",
+            "bytes_transferred": 0,
+            "source_file_size": 0,
+            "errors": [
+                {
+                    "code": 1363008,
+                    "message": "File not found"
+                }
+            ]
+        },
+        "processing_phase": {
+            "status": "error"
+        }
+    }
+}
+
+So I want to confirm that reels actually support a maximum of 1Gb or this is a bug?
+
+---
+
+Krishna:
+I'm also encountering the same problem with uploading videos to the Resumable Upload API. When an upload fails, I'm unable to retrieve the correct status of the upload. The API response indicates that the upload is still "In Progress," but the video_status.upload_phase.bytes_transferred is always reported as 0.
+
+Furthermore, I occasionally receive an error message that states "File not found," with error code 1363008, despite having verified that the file exists and that the upload process is correct. Please Help.
+
+---
+
+Nguyen (Selected Answer):
+I also created a bug ticket for Facebook and after a long discussion they said that although they support files less than 1GB to upload, but we can't guarantee the upload will finish successfully, so an alternative way is to limit the size to 200MB
+
+Please see more detail in https://developers.facebook.com/support/bugs/489447820268760/
+
+=== END OF CONVERSATION 8 ===

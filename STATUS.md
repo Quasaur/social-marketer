@@ -1,8 +1,8 @@
 # Social Marketer - Project Status
 
-## Version: **2.2** (Build 2)
+## Version: **2.3** (Build 3)
 
-## Current Status: ✅ **QUEUE-DRIVEN ARCHITECTURE IMPLEMENTED**
+## Current Status: ✅ **TIKTOK CONNECTOR ADDED - 7 PLATFORMS ACTIVE**
 
 **GitHub:** <https://github.com/Quasaur/social-marketer>
 
@@ -36,8 +36,9 @@ Social Marketer is a native macOS application that automates content distributio
 | Twitter/X | ✅ | ✅ | ✅ | **Queue-driven ready** |
 | LinkedIn | ✅ | ✅ | ✅ | **Queue-driven ready** |
 | Facebook | ✅ | ✅ | ✅ | **Queue-driven ready** |
-| Instagram | ✅ | ✅ | 🔲 | Queue-driven, needs video test |
+| Instagram | ✅ | ✅ | 🔲 | Queue-driven, API updated to v25.0 |
 | Pinterest | ✅ | ✅ | ✅ | **Queue-driven ready** |
+| TikTok | ✅ | ✅ | 🔲 | **NEW - Content Posting API** |
 
 Legend: ✅ Working | 🔲 Not tested | ❌ Not working
 
@@ -132,7 +133,15 @@ YouTube requires these fields for public uploads:
 ]
 ```
 
-## Recent Updates (February 2026) - v2.2 RELEASE
+## Recent Updates (February 2026) - v2.3 RELEASE
+
+### Major Achievements (v2.3)
+
+1. **TikTok Connector** - New Content Posting API integration with OAuth 2.0 + PKCE
+2. **YouTube Connection State Fix** - Now shows "Disconnect" persistently like other platforms
+3. **TikTok Media Preference** - Respects Settings; skips TikTok if set to image (video only)
+4. **TikTok URL Verification Docs** - Complete GoDaddy DNS TXT record instructions
+5. **Platform Tier Updates** - TikTok moved from "API Available" to active platforms list
 
 ### Major Achievements (v2.2)
 
@@ -146,6 +155,14 @@ YouTube requires these fields for public uploads:
 8. **OAuth Port Fix** - Changed from 5390 to unique ports (9090-9094) to avoid Social Effects conflict
 9. **RSS Parsing Optimization** - Skip expensive extractBookName() for Thoughts (no book references)
 10. **Social Effects Attribution** - Send book name (quotes) and Bible reference (passages) to Social Effects API
+
+### Technical Improvements (v2.3)
+
+- **TikTok OAuth:** PKCE-based authentication with localhost callback (port 9095)
+- **TikTok Video Upload:** Direct video posting via Content Posting API
+- **YouTube Connection State:** Simplified to credential-based (not token-based) for consistent UX
+- **TikTok Skip Logic:** PlatformRouter skips TikTok when media preference = image
+- **Build Version:** Updated to v2.3 (Build 3)
 
 ### Technical Improvements (v2.2)
 
@@ -200,11 +217,13 @@ No build-time configuration required. All settings are runtime:
 
 ## Next Steps / Future Enhancements
 
-- [ ] Test and enable remaining platforms (Twitter, LinkedIn, Instagram, Pinterest)
+- [x] TikTok Connector (submitted for approval) ✅
+- [ ] Test and enable remaining platforms (Twitter, LinkedIn, Instagram, Pinterest, TikTok)
 - [ ] Add batch posting from Queue
 - [ ] Implement analytics export
 - [ ] Add thumbnail customization
 - [ ] Background video selection UI
+- [ ] TikTok photo posting (when API supports it)
 
 ## Testing Checklist
 
@@ -220,11 +239,14 @@ No build-time configuration required. All settings are runtime:
 ### Platform Tests
 - [x] YouTube upload as Public
 - [x] YouTube Test Post (scheduled content)
+- [x] YouTube persistent "Disconnect" button
 - [x] Twitter/X Test Post (scheduled content)
 - [x] LinkedIn Test Post (scheduled content)
 - [x] Facebook Test Post (scheduled content)
 - [x] Pinterest Test Pin (scheduled content)
-- [ ] Instagram Test Post (video) - **PENDING**
+- [x] Instagram Test Post (video) - **API updated, ready to test**
+- [ ] TikTok Test Video (scheduled content) - **NEW**
+- [ ] TikTok Media Preference (image = skip) - **NEW**
 
 ### Previous Tests (v1.x)
 - [x] Video generation integration

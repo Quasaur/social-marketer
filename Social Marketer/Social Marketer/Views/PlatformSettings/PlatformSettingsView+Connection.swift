@@ -17,12 +17,11 @@ extension PlatformSettingsView {
                 credentialStatus["twitter"] = hasTwitterCreds
                 connectionStatus["twitter"] = hasTwitterCreds ? .connected : .disconnected
             } else {
-                credentialStatus[platform.id] = oauthManager.hasAPICredentials(for: platform.id)
-                if oauthManager.hasValidTokens(for: platform.id) {
-                    connectionStatus[platform.id] = .connected
-                } else {
-                    connectionStatus[platform.id] = .disconnected
-                }
+                let hasCreds = oauthManager.hasAPICredentials(for: platform.id)
+                credentialStatus[platform.id] = hasCreds
+                // Show as connected if API credentials exist (YouTube and others)
+                // Tokens are managed internally by connectors
+                connectionStatus[platform.id] = hasCreds ? .connected : .disconnected
             }
         }
     }
@@ -127,6 +126,15 @@ extension PlatformSettingsView {
                 manager: testManager
             ) {
                 await testYouTubePost()
+            })
+            
+        case "tiktok":
+            return AnyView(TestPostButton(
+                platform: "tiktok",
+                label: "Test Video",
+                manager: testManager
+            ) {
+                await testTikTokPost()
             })
             
         default:

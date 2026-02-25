@@ -1,0 +1,130 @@
+URL: https://developers.facebook.com/community/threads/1111116517263885/
+Title: Instagram Video Publishing Error: Media ID is not available - code 9007
+
+=== CONTENT ===
+
+Tomáš (Original Poster):
+Hello,
+We are reporting a high volume of intermittent failures when creating video containers for Instagram Reels via the API, starting yesterday morning (September 6, 2025).
+
+This is causing a major disruption for a large number of our clients. The failures are random and affect numerous accounts. Every failure returns the identical error code 9007.
+
+Here is an example of the error response:
+
+"message": "Media ID is not available",
+"type": "OAuthException",
+"code": 9007,
+"error_subcode": 2207027,
+"is_transient": false,
+"error_user_title": "Cannot Publish",
+"error_user_msg": "The media is not ready for publishing, please wait for a moment",
+"fbtrace_id": "AjM9x8yLwZUBhsc3kfb1XYZ"
+
+Are you receiving similar reports from other developers?
+
+Given the significant impact, we kindly request an immediate investigation into this issue.
+
+Thank you for your help.
+
+---
+
+Marco:
+https://developers.facebook.com/support/bugs/1518620589551679/
+
+---
+
+Bas (Selected Answer - Upvote 16):
+The real problem is different and not on the /media_publish API.
+Error code 9007 is correct.
+It's not possible to publish container with status code IN_PROGRESS (In progress status: the media is still being processed).
+
+The real problem that started on September 6th is that there's an issue on the Meta side related to reel contaners processing. The containers remain in IN PROGRESS status without ever transitioning to FINISHED, and after 24 hours, they transition to EXPIRED.
+
+Check your container status with /[container_id]?fields=id,status_code,status and you can see the IN PROGRESS status.
+
+I can confirm that we are also experiencing this issue (containers stuck in the IN PROGRESS state), which is preventing a large number of reels from being published.
+
+Same problem was happened on may 2025.
+
+---
+
+Slim:
+We are also experiencing this issue, media continer never finishes processing
+
+---
+
+Bogdan:
+The weird thing is the container has a "FINISHED" status, and I still get this error.
+
+---
+
+Võ Tri (Answer - Upvote 2):
+I had the same issue, i added a small tempo (sleep(5) in php), between the container creation, and the publish command, it seems to work much better now.
+
+---
+
+Steven (Answer - Upvote 2):
+Status is set to resolved put the problem remains (with images).
+
+---
+
+Tineke:
+Same issue we're facing with the images. Still fixing it? or just ignoring?
+
+---
+
+Bogdan:
+I am still facing this issue, and the weird thing the container status is FINISHED before I try posting the container.
+
+---
+
+Joseph (Detailed Report - Dec 12, 2025):
+The API returns error code 9007 (Media ID is not available) even though the media is eventually processed successfully on Instagram's side. Retrying the exact same request after a short delay consistently succeeds without any changes.
+
+This behavior strongly suggests a timing or media processing issue within the Instagram API rather than an invalid request.
+
+Error Details:
+{
+  "error": {
+    "message": "Media ID is not available",
+    "type": "OAuthException",
+    "code": 9007,
+    "error_subcode": 2207027,
+    "is_transient": false,
+    "error_user_title": "Cannot Publish",
+    "error_user_msg": "The media is not ready for publishing, please wait for a moment"
+  }
+}
+
+Observed Behavior:
+- The media upload request is accepted.
+- The publish request fails with error 9007.
+- No changes are made to the request or payload.
+- Retrying the same request manually after 1-5 times succeeds.
+
+This occurs intermittently and is reproducible across multiple users and accounts. The issue affects images (not only videos).
+
+Expected Behavior:
+If media is still processing on Instagram's side:
+- The API should either delay publication internally, or
+- Return a transient error with clear retry guidance.
+
+Alternatively, the publish endpoint should block until media is ready instead of returning a hard error.
+
+Impact:
+- End users perceive this as a publishing failure and downgrade product ratings.
+- Automation workflows fail despite eventually succeeding on retry.
+- Third-party platforms are forced to implement arbitrary retry logic to work around API timing issues.
+
+Industry Confirmation:
+This issue is widely reported by other platforms and users:
+- Make: https://community.make.com/t/instagram-module-suddenly-failing-with-media-id-is-not-available-9007-oauthexception/92819
+- Zapier Community: https://community.zapier.com/troubleshooting-99/error-media-id-is-not-available-when-using-instagram-for-business-51655
+
+Request to Meta:
+Could anyone from Meta please confirm:
+1. Whether there was a recent change to media processing or publish timing in the Instagram Graph API.
+2. Whether error 9007 should be treated as transient.
+3. If there is an official, recommended retry/backoff strategy for this scenario.
+
+=== END OF CONVERSATION 6 ===

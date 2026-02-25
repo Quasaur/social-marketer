@@ -48,8 +48,14 @@ class BasePlatformConnector {
     }()
     
     /// URLSession for network requests
+    /// Uses a configured session with 60-second timeout to prevent indefinite hangs
     /// Can be overridden for testing or custom configuration
-    var session: URLSession { URLSession.shared }
+    var session: URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }
     
     // MARK: - HTTP Request Helpers
     
@@ -60,21 +66,40 @@ class BasePlatformConnector {
     /// - Returns: Response data
     /// - Throws: PlatformError on failure
     func performRequest(_ request: URLRequest, expectedStatus: Int = 200) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw PlatformError.postFailed("Invalid response from \(platformName)")
-        }
-        
-        guard httpResponse.statusCode == expectedStatus else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            let message = "\(platformName) request failed (HTTP \(httpResponse.statusCode)): \(errorBody)"
+        do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw PlatformError.postFailed("Invalid response from \(platformName)")
+            }
+            
+            guard httpResponse.statusCode == expectedStatus else {
+                let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+                let message = "\(platformName) request failed (HTTP \(httpResponse.statusCode)): \(errorBody)"
+                logger.error("\(message)")
+                ErrorLog.shared.log(category: platformName, message: "Request failed", detail: message)
+                throw PlatformError.postFailed(message)
+            }
+            
+            return data
+        } catch let error as URLError {
+            let message: String
+            switch error.code {
+            case .timedOut:
+                message = "\(platformName) request timed out. The server is not responding."
+            case .notConnectedToInternet:
+                message = "\(platformName) request failed. No internet connection."
+            case .networkConnectionLost:
+                message = "\(platformName) request failed. Network connection was lost."
+            case .cannotConnectToHost:
+                message = "\(platformName) cannot connect to server."
+            default:
+                message = "\(platformName) network error: \(error.localizedDescription)"
+            }
             logger.error("\(message)")
-            ErrorLog.shared.log(category: platformName, message: "Request failed", detail: message)
+            ErrorLog.shared.log(category: platformName, message: "Network error", detail: message)
             throw PlatformError.postFailed(message)
         }
-        
-        return data
     }
     
     /// Perform a request and decode the JSON response
@@ -91,11 +116,23 @@ class BasePlatformConnector {
     ) async throws -> T {
         let data = try await performRequest(request, expectedStatus: expectedStatus)
         
+        // Log the raw response for debugging
+        let responseString = String(data: data, encoding: .utf8) ?? "Unable to decode response"
+        let urlString = request.url?.absoluteString ?? "unknown"
+        if Log.isDebugMode {
+            Log.debug("Response from \(urlString): \(responseString.prefix(500))", category: platformName)
+        }
+        
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode"
-            logger.error("JSON decoding failed: \(error.localizedDescription). Body: \(errorBody)")
+            logger.error("JSON decoding failed for \(urlString): \(error.localizedDescription)")
+            logger.error("Response body: \(responseString)")
+            ErrorLog.shared.log(
+                category: platformName,
+                message: "Response parsing failed",
+                detail: "URL: \(urlString)\nError: \(error.localizedDescription)\n\nResponse: \(responseString)"
+            )
             throw PlatformError.postFailed("\(platformName) response parsing failed: \(error.localizedDescription)")
         }
     }

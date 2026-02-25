@@ -1,0 +1,93 @@
+URL: https://developers.facebook.com/community/threads/876799253851510/
+Title: we are experiencing a problem with publishing Instagram Reels and...
+
+=== CONTENT ===
+
+Tomáš (Original Poster):
+The media file is successfully uploaded, but at the moment of publishing, the Instagram API returns this transient error:
+
+"error": {
+    "message": "An unexpected error has occurred. Please retry your request later.",
+    "type": "OAuthException",
+    "is_transient": true,
+    "code": 2,
+    "fbtrace_id": "AWmhFVXDU-NbEwP7AuocJZk"
+  }
+
+This problem is probably related to the processing of video files, as we are able to publish posts containing only images. +- 12 hours ago started appear this problem. Could you fix this bug ASAP, please?
+
+---
+
+Johana:
+We are facing the same issue..
+
+---
+
+Andy:
+please fix it ASAP, same issue here
+
+---
+
+Leon:
+Sees like a general error, lets see if devs read us soon
+
+---
+
+Jonathan:
+We're experiencing the same errors for publishing
+
+---
+
+Daniel:
+It happened again. Did you find a solution?
+
+---
+
+ZoomSphere (Answer - Upvote 13):
+Hello, we are experiencing the same issue! could you fix ASAP, please?
+
+---
+
+Ervin (Answer - Upvote 13):
+Same here! How is it possible that Meta/Facebook/Instagram always breaks their API on a Friday?
+
+It's the 101 on the deployments book: Never deploy on a Friday!
+
+---
+
+Tomas (Answer - Upvote 9):
+Hi Facebook, many of our requests are failing. We have many clients who are unable to post on Instagram now.
+
+Could you please investigate? It's very important to us.
+
+Thank you very much!
+
+---
+
+Ervin (Answer - Upvote 6):
+I think it's better to upvote this bug report instead:
+https://developers.facebook.com/support/bugs/2321953024667145/
+
+I doubt Facebook team checks the community comments.
+
+Ricu: Or this one: https://developers.facebook.com/support/bugs/338726989017522/
+
+---
+
+Hani (Answer - Upvote 3):
+Seems to be working now for me
+
+---
+
+Ricu (Answer - Upvote 2):
+Hey, a lot of errors started from 2023-12-08 07:00:00 (UTC), cannot publish directly to Instagram
+
+---
+
+Matt:
+We're having the same issue right now. When we try to publish carousel posts including videos, this error comes up. Any idea or solution on this?
+
+=== END OF CONVERSATION 4 ===
+
+Additional content from conversation 4:
+Oral - Asked 2 years ago

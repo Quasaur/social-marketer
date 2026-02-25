@@ -1,0 +1,68 @@
+URL: https://developers.facebook.com/community/threads/1166835024492940/
+Title: Video/Reels upload stuck on forever "IN_PROGRESS"
+
+=== CONTENT ===
+
+Andrea (Original Poster):
+Not sure if this is related to the current outage, but there's no indication that it affects uploads, specifically video uploads and couldn't find any other reports on this topic.
+
+Our code has not changed for several months, but starting a few hours ago, any video upload performed on Instagram via the Content Publishing APIs is stuck into "IN_PROGRESS" status forever.
+
+Specifically, the POST call to the /media endpoint to publish a new content is successful and returns the ID of the media.
+
+Then, when we query that specific ID, with fields=status_code, it always returns "IN_PROGRESS" without ever changing for hours. It never gets to "FINISHED" and never return errors either.
+
+Tried v16.0 and v19.0, same result.
+
+Do note that the Content Publishing works for images. Just reels/videos are stuck in infinite "IN_PROGRESS"
+
+---
+
+Preston:
+Facing the same issue, finally had one of my videos move to "FINISHED" after 3 hours. I was able to post the same video in about 1 minute a few days ago.
+
+---
+
+Tim:
+Yes, same!
+
+---
+
+Bilal:
+we are also facing same issue
+
+when we add copyright_check_status field it return error and without copyright_check_status it return status code IN_PROGRESS
+
+---
+
+Andrea (Answer - Upvote 4):
+As of 5 May, this is happening again
+
+---
+
+Zofia:
+Having same issue right now
+
+---
+
+Preston (Answer - Upvote 2):
+As of about 5 minutes ago this is no longer happening for us.
+
+Andrea: Same here, seems to be fixed
+
+---
+
+Geoffrey (Answer - Upvote 2):
+The issue seems to have re-appeared.
+
+---
+
+Daniel:
+I have this issue, it showed up to many posts yesterday.
+
+---
+
+Abu:
+If your video or Reels upload is stuck on "IN_PROGRESS" indefinitely, try restarting the app or your device. If the issue persists, check your internet connection and ensure you have enough storage space on your device. If none of these solutions work, contact the platform's support for further assistance.
+
+=== END OF CONVERSATION 3 ===

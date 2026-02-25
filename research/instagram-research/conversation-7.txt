@@ -1,0 +1,79 @@
+URL: https://developers.facebook.com/community/threads/633030066096734/
+Title: Reels videos are stuck in "IN_PROGRESS" status for hours
+
+=== CONTENT ===
+
+Grant (Original Poster):
+We are seeing an increase in users reporting that their Reels videos are timing out. We upload them to Instagram, then the videos get stuck in the "IN_PROGRESS" status for 3 hours, after which we mark them as "timed out."
+
+For the users that are affected by this bug, this issue happens to all of their Reels.
+
+Here are the steps we take:
+
+We upload media to Instagram to get back a container ID.
+We check the container status and get back a status_code of IN_PROGRESS.
+We continue to check every 5 minutes for 3 hours, and the video never leaves the IN_PROGRESS status.
+
+This makes Postpone unusable for users who want to publish Reels and are affected by this bug. These users report having no restrictions on their account under Account Status in Instagram.
+
+---
+
+Rajput:
+I'm also facing this issue. When creating Instagram video containers via the Graph API, the container status stays stuck in IN_PROGRESS for hours (sometimes more than 24h) and never transitions to PUBLISHED or FAILED. Eventually, it just expires.
+
+Example response:
+{
+"status_code": "IN_PROGRESS",
+"status": "In Progress: Media is still being processed.",
+"id": "18080892151941111"
+}
+
+This happens consistently on some accounts, making it impossible to publish Reels. Can Meta confirm if this is a known bug or provide a workaround?
+
+---
+
+熊红亮:
+I'm also suffering from the same problem and I've submitted a bug report: https://developers.facebook.com/community/threads/1149922166999796
+
+---
+
+Ervin (Answer - Upvote 5):
+Same here. Had to refund a big customer because of this.
+
+---
+
+Hải (Answer - Upvote 4):
+I'm experiencing a similar issue. I tried uploading a video that had worked before, but now it stays in the IN_PROGRESS status for a while and then changes to ERROR. I've double-checked the token and account, everything seems fine.
+
+It's strange because this video was published successfully before. Looks like something changed recently in how the media is processed.
+
+---
+
+Tim (Answer - Upvote 3):
+Yes, same thing happening to our customers.
+
+You can also verify this by using "upload_type": "resumable" and it will return a id of 0.
+
+---
+
+Arek (Answer - Upvote 2):
+We started notificing the same, and discovered it might be related to age-restricted accounts. Try to see if the account where you have troubles is age-restricted (visit the profile in incognito tab and see if it says it's restricted), and if it is, then that's most probably the case. Something changed on Meta's end.
+
+Created bug report here: https://developers.facebook.com/support/bugs/2140253286444120/
+
+---
+
+Александр (Answer - Upvote 2):
+Video Reels stuck in "IN_PROGRESS" status when caption exceeds 1000 characters (limit is 2200)
+
+---
+
+Davis:
+We're experiencing the same issue — some Story and Reels videos get stuck with status: in_progress, and restarting the process and re-uploading the videos doesn't solve the problem.
+
+---
+
+Nicu:
+This issue is continuously bugging us. I expect better engineering quality from meta
+
+=== END OF CONVERSATION 7 ===

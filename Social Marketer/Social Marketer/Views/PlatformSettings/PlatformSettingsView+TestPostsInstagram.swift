@@ -13,11 +13,7 @@ extension PlatformSettingsView {
     @MainActor
     func testInstagramPost() async {
         await testManager.performTest(platform: "instagram") {
-            ErrorLog.shared.log(
-                category: "Instagram",
-                message: "Test Post started",
-                detail: "Using scheduled post from queue..."
-            )
+            Log.app.info("[Instagram] Test Post started - Using scheduled post from queue...")
             
             let connector = InstagramConnector()
             guard await connector.isConfigured else {
@@ -50,23 +46,31 @@ extension PlatformSettingsView {
             let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
             let link = scheduledPost.link ?? URL(string: "https://wisdombook.life")!
             
-            ErrorLog.shared.log(
-                category: "Instagram",
-                message: "Using scheduled post: \(title)",
-                detail: "Posting to Instagram..."
-            )
-            
-            let caption = "\(content)\n\n📖 Read more at wisdombook.life"
+            let caption = content  // InstagramConnector will add the "Read more" text
             let result: PostResult
             
             if instagramPlatform.prefersVideo {
-                ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Platform prefers video - attempting Reel post")
+                Log.app.info("[Instagram] Test Post - Platform prefers video, attempting Reel post")
+                
+                // Ensure Social Effects server is running before attempting video generation
+                Log.app.info("[Instagram] Ensuring Social Effects server is running...")
+                let serverReady = await SocialEffectsService.shared.ensureServerRunning()
+                guard serverReady else {
+                    let errorMsg = "Social Effects video server is not available. Please ensure it's installed at ~/Developer/social-effects/"
+                    ErrorLog.shared.log(category: "Instagram", message: "Video server unavailable", detail: errorMsg)
+                    return TestPostResult(
+                        success: false,
+                        message: errorMsg,
+                        postURL: nil
+                    )
+                }
+                Log.app.info("[Instagram] Social Effects server ready")
                 
                 if let existingVideoURL = await findExistingVideo(for: String(title)) {
-                    ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Using existing video: \(existingVideoURL.lastPathComponent)")
+                    Log.app.info("[Instagram] Test Post - Using existing video: \(existingVideoURL.lastPathComponent)")
                     result = try await connector.postVideo(existingVideoURL, caption: caption)
                 } else {
-                    ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Generating new video for: \(title)")
+                    Log.app.info("[Instagram] Test Post - Generating new video for: \(title)")
                     
                     let videoGen = VideoGenerator()
                     let entry = WisdomEntry(
@@ -79,20 +83,30 @@ extension PlatformSettingsView {
                         category: .thought
                     )
                     
-                    guard let videoURL = try await videoGen.generateVideo(entry: entry) else {
-                        // Video generation failed - log error and fail (don't fallback to image)
-                        let errorMsg = "Video generation failed for Instagram Reel. Platform is set to video preference."
-                        ErrorLog.shared.log(category: "Instagram", message: "Test Post failed", detail: errorMsg)
+                    do {
+                        guard let videoURL = try await videoGen.generateVideo(entry: entry) else {
+                            let errorMsg = "Video generation failed - no output file"
+                            ErrorLog.shared.log(category: "Instagram", message: "Video generation failed", detail: errorMsg)
+                            return TestPostResult(
+                                success: false,
+                                message: errorMsg,
+                                postURL: nil
+                            )
+                        }
+                        Log.app.info("[Instagram] Video generated: \(videoURL.lastPathComponent)")
+                        result = try await connector.postVideo(videoURL, caption: caption)
+                    } catch let error as VideoGenerationError {
+                        let errorMsg = error.localizedDescription
+                        ErrorLog.shared.log(category: "Instagram", message: "Video generation error", detail: errorMsg)
                         return TestPostResult(
                             success: false,
-                            message: errorMsg,
+                            message: "Video generation failed: \(errorMsg)",
                             postURL: nil
                         )
                     }
-                    result = try await connector.postVideo(videoURL, caption: caption)
                 }
             } else {
-                ErrorLog.shared.log(category: "Instagram", message: "Test Post", detail: "Platform prefers image - generating graphic")
+                Log.app.info("[Instagram] Test Post - Platform prefers image, generating graphic")
                 
                 let generator = QuoteGraphicGenerator()
                 let imageEntry = WisdomEntry(
@@ -115,11 +129,21 @@ extension PlatformSettingsView {
                 result = try await connector.post(image: image, caption: caption, link: link)
             }
             
-            return TestPostResult(
-                success: result.success,
-                message: result.success ? "Posted scheduled content to Instagram! 🎉" : (result.error?.localizedDescription ?? "Unknown error"),
-                postURL: result.postURL
-            )
+            if result.success {
+                return TestPostResult(
+                    success: true,
+                    message: "Posted scheduled content to Instagram! 🎉",
+                    postURL: result.postURL
+                )
+            } else {
+                let errorMsg = result.error?.localizedDescription ?? "Unknown error"
+                ErrorLog.shared.log(category: "Instagram", message: "Test post failed", detail: errorMsg)
+                return TestPostResult(
+                    success: false,
+                    message: "Failed to post: \(errorMsg)",
+                    postURL: nil
+                )
+            }
         }
     }
 }

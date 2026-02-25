@@ -10,23 +10,65 @@ import SwiftUI
 /// AppDelegate for handling application lifecycle events
 /// Specifically for graceful shutdown of Social Effects service
 class SocialMarketerAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillTerminate(_ notification: Notification) {
-        Log.app.notice("🛑 Social Marketer shutting down - stopping Social Effects service...")
+    
+    private var isShuttingDown = false
+    
+    /// Called when user tries to quit the app - allows us to delay termination for cleanup
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !isShuttingDown else {
+            Log.app.notice("⚠️ applicationShouldTerminate called but already shutting down")
+            return .terminateNow  // Already shutting down, allow it
+        }
         
-        // Synchronously shut down Social Effects before app terminates
+        Log.app.notice("🛑 Social Marketer quitting - initiating graceful shutdown...")
+        isShuttingDown = true
+        
+        // Start shutdown in background but delay termination
+        Task {
+            Log.app.notice("📱 Shutdown Task started")
+            await self.performShutdown()
+            Log.app.notice("📱 Shutdown Task completed, replying to terminate")
+            // After shutdown completes (or times out), terminate the app
+            await MainActor.run {
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        
+        Log.app.notice("⏳ Delaying termination for cleanup...")
+        // Return .terminateLater to delay termination until we call reply()
+        return .terminateLater
+    }
+    
+    /// Called just before termination - last chance for cleanup
+    func applicationWillTerminate(_ notification: Notification) {
+        Log.app.notice("🛑 applicationWillTerminate called (isShuttingDown: \(self.isShuttingDown))")
+        // Shutdown should already be done in applicationShouldTerminate
+        // This is a fallback in case that wasn't called
+        if !isShuttingDown {
+            Log.app.notice("🛑 Fallback shutdown initiated...")
+            runSynchronousShutdown()
+        } else {
+            Log.app.notice("✅ Shutdown already completed in applicationShouldTerminate")
+        }
+    }
+    
+    /// Perform async shutdown of Social Effects
+    private func performShutdown() async {
+        Log.app.notice("🔌 Calling SocialEffectsService.shutdown()...")
+        await SocialEffectsService.shared.shutdown()
+        Log.app.notice("🔌 SocialEffectsService.shutdown() returned")
+    }
+    
+    /// Synchronous shutdown for fallback scenarios
+    private func runSynchronousShutdown() {
         let semaphore = DispatchSemaphore(value: 0)
         Task {
             await SocialEffectsService.shared.shutdown()
             semaphore.signal()
         }
         
-        // Wait up to 5 seconds for graceful shutdown
-        let result = semaphore.wait(timeout: .now() + 5)
-        if result == .timedOut {
-            Log.app.warning("⚠️ Social Effects shutdown timed out")
-        } else {
-            Log.app.notice("✅ Social Effects service stopped")
-        }
+        // Wait up to 3 seconds for shutdown
+        _ = semaphore.wait(timeout: .now() + 3)
     }
 }
 
@@ -45,6 +87,12 @@ struct SocialMarketerApp: App {
         .defaultSize(width: 800, height: 600)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit Social Marketer") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q")
+            }
         }
     }
     

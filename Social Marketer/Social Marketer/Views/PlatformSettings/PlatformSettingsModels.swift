@@ -42,6 +42,8 @@ extension PlatformInfo {
         PlatformInfo(id: "pinterest", name: "Pinterest", icon: "pin", color: .red,
                      requiresSecret: true, clientIDLabel: "App ID", clientSecretLabel: "App Secret"),
         PlatformInfo(id: "youtube", name: "YouTube", icon: "play.rectangle", color: .red,
-                     requiresSecret: true, clientIDLabel: "Client ID", clientSecretLabel: "Client Secret")
+                     requiresSecret: true, clientIDLabel: "Client ID", clientSecretLabel: "Client Secret"),
+        PlatformInfo(id: "tiktok", name: "TikTok", icon: "music.note", color: .black,
+                     requiresSecret: true, clientIDLabel: "Client Key", clientSecretLabel: "Client Secret")
     ]
 }

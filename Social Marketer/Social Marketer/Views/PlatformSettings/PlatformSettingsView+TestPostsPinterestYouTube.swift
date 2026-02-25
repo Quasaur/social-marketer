@@ -81,12 +81,11 @@ extension PlatformSettingsView {
     @MainActor
     func testYouTubePost() async {
         await testManager.performTest(platform: "youtube") {
-            ErrorLog.shared.log(category: "YouTube", message: "Test Post started", detail: "Using scheduled post from queue...")
+            Log.app.info("[YouTube] Test Post started - Using scheduled post from queue...")
             
             let connector = YouTubeConnector()
             guard await connector.isConfigured else {
                 let msg = "YouTube not configured. Try disconnecting and reconnecting."
-                ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
                 return TestPostResult(success: false, message: msg, postURL: nil)
             }
             
@@ -94,19 +93,18 @@ extension PlatformSettingsView {
             guard let scheduledPost = await getScheduledPostForToday(),
                   let content = scheduledPost.content else {
                 let msg = "No scheduled post available. Check Post Queue."
-                ErrorLog.shared.log(category: "YouTube", message: "Test Post failed", detail: msg)
                 return TestPostResult(success: false, message: msg, postURL: nil)
             }
             
             let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
-            ErrorLog.shared.log(category: "YouTube", message: "Using scheduled post: \(title)", detail: "Found in Queue")
+            Log.app.info("[YouTube] Using scheduled post: \(title)")
             
             let finalVideoURL: URL
             if let existingURL = await findExistingVideo(for: title) {
                 finalVideoURL = existingURL
-                ErrorLog.shared.log(category: "YouTube", message: "Using existing video", detail: "Found: \(finalVideoURL.lastPathComponent)")
+                Log.app.info("[YouTube] Using existing video: \(finalVideoURL.lastPathComponent)")
             } else {
-                ErrorLog.shared.log(category: "YouTube", message: "Generating new video", detail: "No existing video found for: \(title)")
+                Log.app.info("[YouTube] Generating new video for: \(title)")
                 let videoGen = VideoGenerator()
                 let entry = WisdomEntry(
                     id: UUID(),
@@ -125,7 +123,7 @@ extension PlatformSettingsView {
                         return TestPostResult(success: false, message: msg, postURL: nil)
                     }
                     finalVideoURL = generatedURL
-                    ErrorLog.shared.log(category: "YouTube", message: "Video generated successfully", detail: "Saved to: \(finalVideoURL.lastPathComponent)")
+                    Log.app.info("[YouTube] Video generated successfully: \(finalVideoURL.lastPathComponent)")
                 } catch let error as VideoGenerationError {
                     let errorDetail: String
                     switch error {
@@ -142,12 +140,11 @@ extension PlatformSettingsView {
             }
             
             let caption = "\(title)\n\n\(content)\n\n#Shorts #Wisdom #BookOfWisdom"
-            ErrorLog.shared.log(category: "YouTube", message: "Uploading to YouTube", detail: "Title: \(title.prefix(50))")
+            Log.app.info("[YouTube] Uploading video: \(title.prefix(50))")
             let result = try await connector.postVideo(finalVideoURL, caption: caption)
             
             if result.success {
-                let detail = "URL: \(result.postURL?.absoluteString ?? "No URL")\nPost ID: \(result.postID ?? "No ID")"
-                ErrorLog.shared.log(category: "YouTube", message: "Posted scheduled content to YouTube! 🎬", detail: detail)
+                Log.app.info("[YouTube] Posted scheduled content successfully!")
             } else {
                 let detail = result.error?.localizedDescription ?? "Unknown error"
                 ErrorLog.shared.log(category: "YouTube", message: "YouTube upload failed", detail: detail)
