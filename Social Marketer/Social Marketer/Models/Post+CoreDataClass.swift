@@ -122,6 +122,29 @@ extension Post {
     @NSManaged public func removeFromLogs(_ values: NSSet)
 }
 
+// MARK: - Duplicate Prevention
+
+extension Post {
+    
+    /// Checks if this post has already been successfully posted to the given platform
+    /// - Parameter platform: The platform to check
+    /// - Returns: True if a successful post log exists for this platform
+    func hasBeenPostedTo(platform: Platform) -> Bool {
+        guard let logs = logs as? Set<PostLog> else { return false }
+        return logs.contains { log in
+            log.platform == platform && log.success == true
+        }
+    }
+    
+    /// Returns the set of platforms this post has already been successfully posted to
+    var postedPlatforms: Set<Platform> {
+        guard let logs = logs as? Set<PostLog> else { return [] }
+        return logs.compactMap { log in
+            log.success == true ? log.platform : nil
+        }.reduce(into: Set<Platform>()) { $0.insert($1) }
+    }
+}
+
 // MARK: - Identifiable
 
 extension Post: Identifiable {}

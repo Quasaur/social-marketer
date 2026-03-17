@@ -118,6 +118,13 @@ final class PlatformRouter {
                 continue
             }
             
+            // Check if this post has already been successfully posted to this platform
+            // This prevents duplicates when postToAll is called multiple times
+            if postRecord.hasBeenPostedTo(platform: platform) {
+                logger.info("⏭️ Skipping \(platformName) — post already successfully sent to this platform")
+                continue
+            }
+            
             // Check TikTok media preference - skip if set to image (video only platform for now)
             if platformName == "TikTok" && platform.prefersImage {
                 let skipMsg = "TikTok skipped - media preference set to image (video only)"

@@ -218,6 +218,12 @@ final class PostScheduler {
                 continue
             }
             
+            // Check if intro has already been posted to this platform
+            if post.hasBeenPostedTo(platform: platform) {
+                logger.info("⏭️ Skipping \(platformName) — intro already posted to this platform")
+                continue
+            }
+            
             do {
                 // Post as text (intro post is text-only, no graphic)
                 let result = try await connector.postText(caption)
