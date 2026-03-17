@@ -43,7 +43,8 @@ extension PlatformSettingsView {
                 )
             }
             
-            let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
+            // Use the stored title (alias) from the scheduled post
+            let title = scheduledPost.title ?? String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")
             let link = scheduledPost.link ?? URL(string: "https://wisdombook.life")!
             
             let caption = content
@@ -76,6 +77,7 @@ extension PlatformSettingsView {
                 let entry = WisdomEntry(
                     id: UUID(),
                     title: String(title),
+                    alias: String(title),
                     content: content,
                     reference: nil,
                     link: link,

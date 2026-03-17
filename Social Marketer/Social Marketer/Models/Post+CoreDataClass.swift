@@ -19,9 +19,10 @@ enum PostStatus: String {
 public class Post: NSManagedObject {
     
     /// Convenience initializer
-    convenience init(context: NSManagedObjectContext, content: String, imageURL: URL?, link: URL) {
+    convenience init(context: NSManagedObjectContext, title: String, content: String, imageURL: URL?, link: URL) {
         self.init(context: context)
         self.id = UUID()
+        self.title = title
         self.content = content
         self.imageURLString = imageURL?.absoluteString
         self.linkString = link.absoluteString
@@ -93,6 +94,7 @@ extension Post {
 extension Post {
     
     @NSManaged public var id: UUID?
+    @NSManaged public var title: String?
     @NSManaged public var content: String?
     @NSManaged public var imageURLString: String?
     @NSManaged public var linkString: String?

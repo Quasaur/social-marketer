@@ -44,11 +44,14 @@ extension PlatformSettingsView {
             }
             
             let link = scheduledPost.link ?? URL(string: "https://www.wisdombook.life")!
+            // Use the stored title (alias) from the scheduled post
+            let title = scheduledPost.title ?? String(content.prefix(60))
             
             let captionBuilder = CaptionBuilder()
             let entry = WisdomEntry(
                 id: UUID(),
-                title: String(content.prefix(60)),
+                title: title,
+                alias: title,
                 content: content,
                 reference: nil,
                 link: link,
@@ -96,7 +99,8 @@ extension PlatformSettingsView {
                 return TestPostResult(success: false, message: msg, postURL: nil)
             }
             
-            let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
+            // Use the stored title (alias) from the scheduled post
+            let title = scheduledPost.title ?? String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")
             Log.app.info("[YouTube] Using scheduled post: \(title)")
             
             let finalVideoURL: URL
@@ -109,6 +113,7 @@ extension PlatformSettingsView {
                 let entry = WisdomEntry(
                     id: UUID(),
                     title: String(title),
+                    alias: String(title),
                     content: content,
                     reference: nil,
                     link: scheduledPost.link ?? URL(string: "https://wisdombook.life")!,

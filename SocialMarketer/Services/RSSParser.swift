@@ -11,6 +11,7 @@ import Foundation
 struct WisdomEntry: Identifiable, Codable {
     let id: UUID
     let title: String
+    let alias: String
     let content: String
     let reference: String?
     let link: URL
@@ -154,6 +155,9 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         var titleText = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         var reference: String? = nil
         
+        // Extract alias from title (the part after "Thought: ", "Quote: ", or "Passage: ")
+        let alias = extractAlias(from: titleText)
+        
         // Titles may contain reference after " - " (e.g., "SCORNERS - Proverbs 3:34")
         if let dashRange = titleText.range(of: " - ", options: .backwards) {
             let possibleRef = String(titleText[dashRange.upperBound...])
@@ -185,6 +189,7 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
         let entry = WisdomEntry(
             id: UUID(),
             title: titleText,
+            alias: alias,
             content: cleanContent,
             reference: reference,
             link: URL(string: currentLink.trimmingCharacters(in: .whitespacesAndNewlines)) ?? URL(string: "https://wisdombook.life")!,
@@ -269,5 +274,22 @@ final class RSSXMLParser: NSObject, XMLParserDelegate {
             return name
         }
         return nil
+    }
+    
+    /// Extracts the alias from the title (e.g., "Thought: TRUE FAITH" -> "TRUE FAITH")
+    /// This is the node's alias/title without the type prefix.
+    private func extractAlias(from title: String) -> String {
+        // Pattern: "Thought: ", "Quote: ", "Passage: ", etc.
+        let prefixes = ["Thought: ", "Quote: ", "Passage: ", "Introduction: "]
+        
+        for prefix in prefixes {
+            if title.hasPrefix(prefix) {
+                return String(title.dropFirst(prefix.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        
+        // If no prefix found, return the full title (fallback)
+        return title
     }
 }

@@ -89,7 +89,10 @@ final class PlatformRouter {
         }
         
         // Create or use provided Post record
-        let postRecord = post ?? Post(context: context, content: content ?? entry?.content ?? "", imageURL: imageURL, link: link)
+        // Use entry's alias as title, or derive from content if no entry
+        let postTitle = entry?.alias ?? "Wisdom"
+        let postContent = content ?? entry?.content ?? ""
+        let postRecord = post ?? Post(context: context, title: postTitle, content: postContent, imageURL: imageURL, link: link)
         if post == nil {
             postRecord.scheduledDate = Date()
         }

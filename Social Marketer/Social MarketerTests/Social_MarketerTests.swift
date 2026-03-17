@@ -16,6 +16,7 @@ final class WisdomEntryTests: XCTestCase {
         let entry = WisdomEntry(
             id: UUID(),
             title: "Test Wisdom",
+            alias: "Test Wisdom",
             content: "Be kind to one another.",
             reference: "Ephesians 4:32",
             link: URL(string: "https://wisdombook.life/wisdom/test")!,
@@ -24,6 +25,7 @@ final class WisdomEntryTests: XCTestCase {
         )
         
         XCTAssertEqual(entry.title, "Test Wisdom")
+        XCTAssertEqual(entry.alias, "Test Wisdom")
         XCTAssertEqual(entry.content, "Be kind to one another.")
         XCTAssertEqual(entry.reference, "Ephesians 4:32")
         XCTAssertEqual(entry.category, .thought)
@@ -49,6 +51,7 @@ final class WisdomEntryTests: XCTestCase {
         let entry = WisdomEntry(
             id: UUID(),
             title: "No Reference",
+            alias: "No Reference",
             content: "A thought without a source.",
             reference: nil,
             link: URL(string: "https://wisdombook.life")!,
@@ -63,6 +66,7 @@ final class WisdomEntryTests: XCTestCase {
         let entry = WisdomEntry(
             id: UUID(),
             title: "Codable Test",
+            alias: "Codable Test",
             content: "Test content",
             reference: "Test 1:1",
             link: URL(string: "https://wisdombook.life/test")!,

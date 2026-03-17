@@ -204,7 +204,7 @@ final class PostScheduler {
         }
         
         // Create a Post record for the intro
-        let post = Post(context: context, content: caption, imageURL: nil, link: link)
+        let post = Post(context: context, title: "Introduction", content: caption, imageURL: nil, link: link)
         post.scheduledDate = Date()
         
         var anySuccess = false
@@ -416,12 +416,13 @@ final class PostScheduler {
     private func createPostFromEntry(_ entry: WisdomEntry, scheduledFor date: Date, in context: NSManagedObjectContext) {
         let post = Post(
             context: context,
+            title: entry.alias,
             content: entry.content,
             imageURL: nil, // Will be generated at post time
             link: entry.link
         )
         post.scheduledDate = date
-        logger.debug("Created post from entry: \(entry.title ?? "Untitled") scheduled for \(date)")
+        logger.debug("Created post from entry: \(entry.alias) scheduled for \(date)")
     }
     
     /// Post a single queued post to all enabled platforms — delegates to PlatformRouter
@@ -437,10 +438,11 @@ final class PostScheduler {
         let link = post.link ?? URL(string: AppConfiguration.URLs.wisdomBook)!
         
         // Build entry for graphic/video generation
-        let title = content.prefix(60).replacingOccurrences(of: "\n", with: " ")
+        // Use the stored title (alias) for image generation
         let entry = WisdomEntry(
             id: UUID(),
-            title: String(title),
+            title: post.title ?? "Wisdom",
+            alias: post.title ?? "Wisdom",
             content: content,
             reference: nil,
             link: link,

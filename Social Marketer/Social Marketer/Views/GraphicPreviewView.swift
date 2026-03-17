@@ -242,7 +242,8 @@ struct GraphicPreviewView: View {
                 
                 // Create Post entity
                 await MainActor.run {
-                    let post = Post(context: viewContext, content: entry.content ?? "", imageURL: imageURL, link: entryLink)
+                    let postTitle = entry.title ?? "Wisdom"
+                    let post = Post(context: viewContext, title: postTitle, content: entry.content ?? "", imageURL: imageURL, link: entryLink)
                     post.scheduledDate = scheduledDate
                     entry.markAsUsed()
                     PersistenceController.shared.save()

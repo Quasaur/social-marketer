@@ -95,13 +95,15 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
         }
         
         let link = scheduledPost.link ?? URL(string: AppConfiguration.URLs.wisdomBook)!
-        let title = String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")
+        // Use the stored title (alias) from the scheduled post
+        let title = scheduledPost.title ?? String(content.prefix(60)).replacingOccurrences(of: "\n", with: " ")
         
         // Generate graphic for the content
         let generator = QuoteGraphicGenerator()
         let entry = WisdomEntry(
             id: UUID(),
             title: title,
+            alias: title,
             content: content,
             reference: nil,
             link: link,
@@ -136,6 +138,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
             let entry = WisdomEntry(
                 id: UUID(),
                 title: prepared.title,
+                alias: prepared.title,
                 content: prepared.content,
                 reference: nil,
                 link: prepared.link,
@@ -190,6 +193,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
             let entry = WisdomEntry(
                 id: UUID(),
                 title: prepared.title,
+                alias: prepared.title,
                 content: prepared.content,
                 reference: nil,
                 link: prepared.link,
@@ -240,6 +244,7 @@ class TestPostManager: ObservableObject, TestPostServiceProtocol {
             let entry = WisdomEntry(
                 id: UUID(),
                 title: prepared.title,
+                alias: prepared.title,
                 content: prepared.content,
                 reference: nil,
                 link: prepared.link,
